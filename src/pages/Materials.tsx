@@ -114,21 +114,33 @@ export default function Materials() {
       const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: '' });
       const objectMap = new Map(data.objects.map((o) => [o.name.toLowerCase(), o.id]));
       const catMap = new Map(data.categories.map((c) => [c.name.toLowerCase(), c.id]));
+      const unmatchedObjects = new Set<string>();
       const parsed: BulkRow[] = rows.map((r) => {
         const objName = String(r['Объект'] || r['object'] || '').trim();
         const catName = String(r['Категория'] || r['category'] || '').trim();
         const unit = String(r['Ед.'] || r['Ед. изм.'] || r['unit'] || 'шт').trim();
+        const objId = objectMap.get(objName.toLowerCase()) || '';
+        if (objName && !objId) unmatchedObjects.add(objName);
         return {
           name: String(r['Материал'] || r['material'] || '').trim(),
           article: String(r['Артикул'] || r['article'] || '').trim(),
           unit: UNIT_OPTIONS.includes(unit) ? unit : 'шт',
           category_id: catMap.get(catName.toLowerCase()) || '',
-          object_id: objectMap.get(objName.toLowerCase()) || '',
+          object_id: objId,
           quantity: String(r['Количество'] || r['quantity'] || '').trim(),
         };
       }).filter((r) => r.name);
       if (parsed.length > 0) {
         setBulkRows(parsed);
+      }
+      if (unmatchedObjects.size > 0) {
+        const list = Array.from(unmatchedObjects).slice(0, 5).join('\n');
+        alert(
+          `Внимание! Не распознаны названия объектов (${unmatchedObjects.size}).\n` +
+          `Потребность для этих строк не будет создана.\n` +
+          `Проверьте, что названия совпадают с системой:\n\n${list}` +
+          (unmatchedObjects.size > 5 ? '\n...' : '')
+        );
       }
       if (fileInputRef.current) fileInputRef.current.value = '';
     };
@@ -152,11 +164,17 @@ export default function Materials() {
   const handleBulkSave = async () => {
     const validRows = bulkRows.filter((r) => r.name.trim());
     const createdMaterials = new Map<string, string>();
+    const createdReqKeys = new Set<string>();
+    let savedCount = 0;
+    let skippedCount = 0;
+    const errors: string[] = [];
+
     for (const row of validRows) {
       const nameKey = row.name.trim().toLowerCase();
       const articleKey = (row.article.trim() || '').toLowerCase();
       const matchKey = `${nameKey}||${articleKey}`;
       let materialId: string | null = null;
+
       const existing = data.materials.find(
         (m) => m.name.toLowerCase() === nameKey && (m.article || '').toLowerCase() === articleKey,
       );
@@ -165,43 +183,87 @@ export default function Materials() {
       } else if (createdMaterials.has(matchKey)) {
         materialId = createdMaterials.get(matchKey)!;
       } else {
-        const { data: inserted } = await supabase.from('materials').insert({
+        const { data: inserted, error } = await supabase.from('materials').insert({
           name: row.name.trim(),
           article: row.article.trim() || null,
           unit: row.unit || 'шт',
           category_id: row.category_id || null,
         }).select().single();
+        if (error) {
+          errors.push(`«${row.name.trim()}» — не удалось создать материал: ${error.message}`);
+          skippedCount++;
+          continue;
+        }
         materialId = inserted?.id || null;
         if (materialId) createdMaterials.set(matchKey, materialId);
       }
-      if (materialId && row.object_id && row.quantity) {
+
+      if (!materialId) {
+        skippedCount++;
+        continue;
+      }
+
+      if (row.object_id && row.quantity) {
+        const reqKey = `${materialId}||${row.object_id}`;
+        const qty = parseFloat(row.quantity);
+        if (isNaN(qty)) {
+          errors.push(`«${row.name.trim()}» — неверное количество: ${row.quantity}`);
+          skippedCount++;
+          continue;
+        }
+
         const existingReq = data.requirements.find(
           (r) => r.material_id === materialId && r.object_id === row.object_id,
-        );
-        if (existingReq) {
-          await supabase.from('requirements').update({ quantity: parseFloat(row.quantity) }).eq('id', existingReq.id);
-        } else {
-          const { data: reqInserted } = await supabase.from('requirements').insert({
+        ) || (createdReqKeys.has(reqKey) ? { id: '__pending' } : null);
+
+        if (existingReq && existingReq.id !== '__pending') {
+          const { error: updErr } = await supabase.from('requirements')
+            .update({ quantity: qty }).eq('id', existingReq.id);
+          if (updErr) {
+            errors.push(`«${row.name.trim()}» — не удалось обновить потребность: ${updErr.message}`);
+            skippedCount++;
+          } else {
+            savedCount++;
+          }
+        } else if (!createdReqKeys.has(reqKey)) {
+          const { data: reqInserted, error: reqErr } = await supabase.from('requirements').insert({
             material_id: materialId,
             object_id: row.object_id,
-            quantity: parseFloat(row.quantity),
+            quantity: qty,
           }).select().single();
-          if (reqInserted) {
+          if (reqErr) {
+            errors.push(`«${row.name.trim()}» — не удалось создать потребность: ${reqErr.message}`);
+            skippedCount++;
+          } else if (reqInserted) {
+            createdReqKeys.add(reqKey);
             await supabase.from('requirement_corrections').insert({
               requirement_id: reqInserted.id,
               material_id: materialId,
               object_id: row.object_id,
               old_quantity: 0,
-              new_quantity: parseFloat(row.quantity),
+              new_quantity: qty,
               reason: 'Массовая загрузка',
               changed_by: 'operator',
             });
+            savedCount++;
           }
+        } else {
+          skippedCount++;
         }
+      } else {
+        savedCount++;
       }
     }
+
     setBulkModalOpen(false);
     await refresh();
+
+    const summary = `Загружено: ${savedCount}${skippedCount > 0 ? `, пропущено: ${skippedCount}` : ''}.`;
+    if (errors.length > 0) {
+      alert(`${summary}\n\nОшибки (${errors.length}):\n${errors.slice(0, 10).join('\n')}${errors.length > 10 ? '\n...' : ''}`);
+    } else {
+      alert(summary);
+    }
   };
 
   const handleExport = () => {
