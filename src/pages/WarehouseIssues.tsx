@@ -27,7 +27,7 @@ export default function WarehouseIssues() {
   const [issueMaterialId, setIssueMaterialId] = useState<string | null>(null);
   const [issueContractor, setIssueContractor] = useState('');
   const [issueDate, setIssueDate] = useState(new Date().toISOString().slice(0, 10));
-  const [issueRows, setIssueRows] = useState<{ object_id: string; available: number; issueQty: string }[]>([]);
+  const [issueRows, setIssueRows] = useState<{ object_id: string; required: number; available: number; issueQty: string }[]>([]);
 
   const contractorMap = useMemo(() => new Map(data.contractors.map((c) => [c.id, c])), [data.contractors]);
   const materialMap = useMemo(() => new Map(data.materials.map((m) => [m.id, m])), [data.materials]);
@@ -74,6 +74,16 @@ export default function WarehouseIssues() {
     }
     return map;
   }, [data.requirements]);
+
+  const objectIdsByContractor = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    for (const relation of data.contractorObjects) {
+      const objectIds = map.get(relation.contractor_id) || new Set<string>();
+      objectIds.add(relation.object_id);
+      map.set(relation.contractor_id, objectIds);
+    }
+    return map;
+  }, [data.contractorObjects]);
 
   // Materials with available stock (for issue table)
   const stockMaterials = useMemo(() => {
@@ -164,8 +174,25 @@ export default function WarehouseIssues() {
     setIssueMaterialId(materialId);
     setIssueContractor('');
     setIssueDate(new Date().toISOString().slice(0, 10));
-    const reqs = requiredByMaterial.get(materialId) || [];
-    setIssueRows(reqs.map((r) => ({ object_id: r.object_id, available: 0, issueQty: '' })));
+    setIssueRows([]);
+  };
+
+  const handleIssueContractorChange = (contractorId: string) => {
+    setIssueContractor(contractorId);
+    const allowedObjectIds = objectIdsByContractor.get(contractorId) || new Set<string>();
+    const requirements = new Map(
+      (requiredByMaterial.get(issueMaterialId || '') || []).map((req) => [req.object_id, req.required]),
+    );
+    setIssueRows(
+      data.objects
+        .filter((object) => allowedObjectIds.has(object.id))
+        .map((object) => ({
+          object_id: object.id,
+          required: requirements.get(object.id) || 0,
+          available: 0,
+          issueQty: '',
+        })),
+    );
   };
 
   const handleIssueSubmit = async () => {
@@ -477,7 +504,7 @@ export default function WarehouseIssues() {
               <label className="text-sm font-medium text-slate-700 mb-1 block">Подрядчик</label>
               <Select
                 value={issueContractor}
-                onChange={setIssueContractor}
+                onChange={handleIssueContractorChange}
                 options={data.contractors.map((c) => ({ value: c.id, label: c.name }))}
                 placeholder="Выбрать подрядчика..."
               />
