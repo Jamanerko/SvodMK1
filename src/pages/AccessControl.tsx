@@ -192,6 +192,7 @@ export default function AccessControl() {
                     <th className="text-left px-4 py-2.5 font-medium">Роль</th>
                     <th className="text-left px-4 py-2.5 font-medium">Статус</th>
                     <th className="text-left px-4 py-2.5 font-medium">Последний вход</th>
+                    <th className="text-left px-4 py-2.5 font-medium">WhatsApp</th>
                     <th className="text-right px-4 py-2.5 font-medium">Действия</th>
                   </tr>
                 </thead>
@@ -239,6 +240,17 @@ export default function AccessControl() {
                         {u.last_login_at
                           ? <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{new Date(u.last_login_at).toLocaleString('ru-RU')}</span>
                           : '—'}
+                      </td>
+                      <td className="px-4 py-3">
+                        <a
+                          href={`https://wa.me/${u.phone.replace(/\D/g, '')}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-green-50 hover:bg-green-100 text-green-700 text-xs font-medium"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          WhatsApp
+                        </a>
                       </td>
                       <td className="px-4 py-3 text-right">
                         {u.is_admin ? (
