@@ -534,17 +534,41 @@ export default function WarehouseIssues() {
                     <td className="px-3 py-2 text-slate-700">{objectMap.get(row.object_id)?.name || '—'}</td>
                     <td className="px-3 py-2 text-right text-slate-600">{row.required}</td>
                     <td className="px-3 py-2 text-right">
-                      <input
-                        type="number"
-                        value={row.issueQty}
-                        onChange={(e) => {
-                          const c = [...issueRows];
-                          c[idx].issueQty = e.target.value;
-                          setIssueRows(c);
-                        }}
-                        placeholder="0"
-                        className="w-24 px-2 py-1.5 rounded-lg border border-slate-300 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
+                      {(() => {
+                        const stockAvailable = Math.max(
+                          0,
+                          (receivedByMaterial.get(issueMaterialId || '') || 0) - (issuedByMaterial.get(issueMaterialId || '') || 0),
+                        );
+                        const maxAllowed = row.required > 0 ? Math.min(row.required, stockAvailable) : stockAvailable;
+                        return (
+                          <div className="inline-flex flex-col items-end gap-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const nextRows = [...issueRows];
+                                nextRows[idx].issueQty = String(maxAllowed);
+                                setIssueRows(nextRows);
+                              }}
+                              className="text-[10px] leading-none text-blue-600 hover:text-blue-800 hover:underline"
+                            >
+                              Макс. {maxAllowed}
+                            </button>
+                            <input
+                              type="number"
+                              min="0"
+                              max={maxAllowed}
+                              value={row.issueQty}
+                              onChange={(e) => {
+                                const c = [...issueRows];
+                                c[idx].issueQty = e.target.value;
+                                setIssueRows(c);
+                              }}
+                              placeholder="0"
+                              className="w-24 px-2 py-1.5 rounded-lg border border-slate-300 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                          </div>
+                        );
+                      })()}
                     </td>
                   </tr>
                 ))}
