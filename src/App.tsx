@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { LayoutDashboard, MapPin, Package, ClipboardList, Truck, FileText, Users, Warehouse, History } from 'lucide-react';
+import { LayoutDashboard, MapPin, Package, ClipboardList, Truck, FileText, Users, Warehouse, History, Shield, LogOut, Menu } from 'lucide-react';
 import Dashboard from '@/pages/Dashboard';
 import Objects from '@/pages/Objects';
 import Materials from '@/pages/Materials';
@@ -10,6 +10,9 @@ import WarehouseIssues from '@/pages/WarehouseIssues';
 import Contractors from '@/pages/Contractors';
 import Corrections from '@/pages/Corrections';
 import ContractorPortal from '@/pages/ContractorPortal';
+import AccessControl from '@/pages/AccessControl';
+import LoginScreen from '@/pages/LoginScreen';
+import { useAuth } from '@/lib/AuthContext';
 
 export type PageKey =
   | 'dashboard'
@@ -21,13 +24,15 @@ export type PageKey =
   | 'purchase-requests'
   | 'issues'
   | 'contractors'
-  | 'contractor-portal';
+  | 'contractor-portal'
+  | 'access-control';
 
 interface NavItem {
   key: PageKey;
   label: string;
   icon: typeof LayoutDashboard;
   group: string;
+  adminOnly?: boolean;
 }
 
 const NAV: NavItem[] = [
@@ -41,44 +46,52 @@ const NAV: NavItem[] = [
   { key: 'issues', label: 'Выдача подрядчикам', icon: Truck, group: 'Склад' },
   { key: 'purchase-requests', label: 'Заявки на закуп', icon: FileText, group: 'Закупки' },
   { key: 'contractor-portal', label: 'Кабинет подрядчика', icon: Users, group: 'Сервис' },
+  { key: 'access-control', label: 'Управление доступом', icon: Shield, group: 'Администрирование', adminOnly: true },
 ];
 
 function App() {
+  const { user, loading, logout } = useAuth();
   const [page, setPage] = useState<PageKey>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
-    setPage(page);
-  }, [page]);
+    // If non-admin navigates to admin page, redirect
+    if (page === 'access-control' && user && !user.is_admin) {
+      setPage('dashboard');
+    }
+  }, [page, user]);
 
-  const groups = [...new Set(NAV.map((n) => n.group))];
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-900">
+        <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (!user) return <LoginScreen />;
+
+  const visibleNav = NAV.filter((n) => !n.adminOnly || user.is_admin);
+  const groups = [...new Set(visibleNav.map((n) => n.group))];
 
   const renderPage = () => {
     switch (page) {
-      case 'dashboard':
-        return <Dashboard />;
-      case 'objects':
-        return <Objects />;
-      case 'materials':
-        return <Materials />;
-      case 'requirements':
-        return <Requirements />;
-      case 'corrections':
-        return <Corrections />;
-      case 'receipts':
-        return <WarehouseReceipts />;
-      case 'purchase-requests':
-        return <PurchaseRequests />;
-      case 'issues':
-        return <WarehouseIssues />;
-      case 'contractors':
-        return <Contractors />;
-      case 'contractor-portal':
-        return <ContractorPortal />;
-      default:
-        return <Dashboard />;
+      case 'dashboard': return <Dashboard />;
+      case 'objects': return <Objects />;
+      case 'materials': return <Materials />;
+      case 'requirements': return <Requirements />;
+      case 'corrections': return <Corrections />;
+      case 'receipts': return <WarehouseReceipts />;
+      case 'purchase-requests': return <PurchaseRequests />;
+      case 'issues': return <WarehouseIssues />;
+      case 'contractors': return <Contractors />;
+      case 'contractor-portal': return <ContractorPortal />;
+      case 'access-control': return user.is_admin ? <AccessControl /> : <Dashboard />;
+      default: return <Dashboard />;
     }
   };
+
+  const currentLabel = visibleNav.find((n) => n.key === page)?.label ?? '';
 
   return (
     <div className="min-h-screen bg-slate-50 flex">
@@ -97,6 +110,7 @@ function App() {
             <div className="text-xs text-slate-400">Управление материалами</div>
           </div>
         </div>
+
         <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-4">
           {groups.map((group) => (
             <div key={group}>
@@ -104,19 +118,18 @@ function App() {
                 {group}
               </div>
               <div className="space-y-0.5">
-                {NAV.filter((n) => n.group === group).map((item) => {
+                {visibleNav.filter((n) => n.group === group).map((item) => {
                   const Icon = item.icon;
                   const active = page === item.key;
                   return (
                     <button
                       key={item.key}
-                      onClick={() => {
-                        setPage(item.key);
-                        setSidebarOpen(false);
-                      }}
+                      onClick={() => { setPage(item.key); setSidebarOpen(false); }}
                       className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
                         active
                           ? 'bg-blue-600 text-white'
+                          : item.adminOnly
+                          ? 'text-violet-400 hover:bg-slate-800 hover:text-violet-300'
                           : 'text-slate-400 hover:bg-slate-800 hover:text-white'
                       }`}
                     >
@@ -129,17 +142,33 @@ function App() {
             </div>
           ))}
         </nav>
-        <div className="p-3 border-t border-slate-700 text-xs text-slate-500">
-          Склад: г. Каражал
+
+        {/* Bottom: user info + logout */}
+        <div className="p-3 border-t border-slate-700 space-y-2">
+          <div className="flex items-center gap-2 px-2">
+            <div className="w-7 h-7 rounded-full bg-blue-700 flex items-center justify-center shrink-0">
+              <span className="text-xs text-white font-bold">
+                {user.phone.slice(-2)}
+              </span>
+            </div>
+            <div className="min-w-0">
+              <div className="text-xs text-slate-300 font-medium truncate">{user.phone}</div>
+              <div className="text-xs text-slate-500">{user.is_admin ? 'Администратор' : 'Пользователь'}</div>
+            </div>
+          </div>
+          <button
+            onClick={logout}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-slate-400 hover:bg-slate-800 hover:text-red-400 transition-colors"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            Выйти
+          </button>
         </div>
       </aside>
 
-      {/* Overlay for mobile */}
+      {/* Mobile overlay */}
       {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 z-30 lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
+        <div className="fixed inset-0 bg-black/50 z-30 lg:hidden" onClick={() => setSidebarOpen(false)} />
       )}
 
       {/* Main content */}
@@ -149,17 +178,11 @@ function App() {
             onClick={() => setSidebarOpen(true)}
             className="lg:hidden p-2 rounded-lg hover:bg-slate-100"
           >
-            <LayoutDashboard className="w-5 h-5 text-slate-600" />
+            <Menu className="w-5 h-5 text-slate-600" />
           </button>
-          <h1 className="text-lg font-semibold text-slate-800 hidden sm:block">
-            {NAV.find((n) => n.key === page)?.label}
-          </h1>
+          <h1 className="text-lg font-semibold text-slate-800 hidden sm:block">{currentLabel}</h1>
           <div className="text-sm text-slate-500">
-            {new Date().toLocaleDateString('ru-RU', {
-              day: 'numeric',
-              month: 'long',
-              year: 'numeric',
-            })}
+            {new Date().toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}
           </div>
         </header>
         <main className="flex-1 p-4 lg:p-6 overflow-x-hidden">{renderPage()}</main>
