@@ -51,15 +51,20 @@ const NAV: NavItem[] = [
 
 function App() {
   const { user, loading, logout } = useAuth();
+  const isRepresentative = !!(user && !user.is_admin && user.contractor_id);
   const [page, setPage] = useState<PageKey>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
-    // If non-admin navigates to admin page, redirect
+    // Representatives only see contractor-portal
+    if (isRepresentative && page !== 'contractor-portal') {
+      setPage('contractor-portal');
+    }
+    // Non-admin cannot access admin page
     if (page === 'access-control' && user && !user.is_admin) {
       setPage('dashboard');
     }
-  }, [page, user]);
+  }, [page, user, isRepresentative]);
 
   if (loading) {
     return (
@@ -71,10 +76,15 @@ function App() {
 
   if (!user) return <LoginScreen />;
 
-  const visibleNav = NAV.filter((n) => !n.adminOnly || user.is_admin);
+  // Representatives only get the contractor portal nav item
+  const visibleNav = isRepresentative
+    ? NAV.filter((n) => n.key === 'contractor-portal')
+    : NAV.filter((n) => !n.adminOnly || user.is_admin);
+
   const groups = [...new Set(visibleNav.map((n) => n.group))];
 
   const renderPage = () => {
+    if (isRepresentative) return <ContractorPortal />;
     switch (page) {
       case 'dashboard': return <Dashboard />;
       case 'objects': return <Objects />;
@@ -91,7 +101,7 @@ function App() {
     }
   };
 
-  const currentLabel = visibleNav.find((n) => n.key === page)?.label ?? '';
+  const currentLabel = visibleNav.find((n) => n.key === page)?.label ?? (isRepresentative ? 'Мой кабинет' : '');
 
   return (
     <div className="min-h-screen bg-slate-50 flex">
@@ -153,7 +163,9 @@ function App() {
             </div>
             <div className="min-w-0">
               <div className="text-xs text-slate-300 font-medium truncate">{user.phone}</div>
-              <div className="text-xs text-slate-500">{user.is_admin ? 'Администратор' : 'Пользователь'}</div>
+              <div className="text-xs text-slate-500">
+                {user.is_admin ? 'Администратор' : isRepresentative ? 'Представитель подрядчика' : 'Пользователь'}
+              </div>
             </div>
           </div>
           <button

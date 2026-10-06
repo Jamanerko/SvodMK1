@@ -8,6 +8,7 @@ export interface AppUser {
   is_admin: boolean;
   is_blocked: boolean;
   is_online: boolean;
+  contractor_id: string | null;
   last_login_at: string | null;
   created_at: string;
 }

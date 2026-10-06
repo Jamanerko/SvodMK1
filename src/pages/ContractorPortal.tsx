@@ -1,7 +1,8 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Users, CheckCircle, Clock, Download, Package, MapPin, AlertTriangle, Truck, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useData } from '@/lib/useData';
+import { useAuth } from '@/lib/AuthContext';
 import { Card, CardHeader, Button, Select, Badge, Modal, Input, PageContainer, LoadingSpinner, EmptyState } from '@/components/ui';
 import { exportToExcel } from '@/lib/export';
 import { ISSUE_STATUS_LABELS, ISSUE_STATUS_COLORS, type WarehouseIssueStatus } from '@/lib/types';
@@ -17,9 +18,18 @@ const FORCED_REASONS = [
 
 export default function ContractorPortal() {
   const { data, loading, refresh } = useData();
+  const { user } = useAuth();
+  const isRepresentative = !!user?.contractor_id;
   const [selectedContractor, setSelectedContractor] = useState('');
   const [receiptModalOpen, setReceiptModalOpen] = useState<string | null>(null);
   const [receiptRows, setReceiptRows] = useState<{ item_id: string; material_id: string; object_id: string; ordered: number; received: string; reason: string }[]>([]);
+
+  // Auto-select contractor for representative users
+  useEffect(() => {
+    if (isRepresentative && user.contractor_id) {
+      setSelectedContractor(user.contractor_id);
+    }
+  }, [isRepresentative, user?.contractor_id]);
 
   const materialMap = useMemo(() => new Map(data.materials.map((m) => [m.id, m])), [data.materials]);
   const objectMap = useMemo(() => new Map(data.objects.map((o) => [o.id, o])), [data.objects]);
@@ -162,7 +172,13 @@ export default function ContractorPortal() {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
           <Users className="w-5 h-5 text-slate-400" />
-          <span className="text-sm text-slate-500">Выберите себя из списка:</span>
+          {isRepresentative ? (
+            <span className="text-sm font-medium text-slate-700">
+              {data.contractors.find((c) => c.id === user?.contractor_id)?.name || 'Мой кабинет'}
+            </span>
+          ) : (
+            <span className="text-sm text-slate-500">Выберите себя из списка:</span>
+          )}
         </div>
         {selectedContractor && (
           <Button onClick={handleExport} variant="secondary" size="sm">
@@ -171,11 +187,13 @@ export default function ContractorPortal() {
         )}
       </div>
 
-      <Card className="p-4">
-        <Select value={selectedContractor} onChange={setSelectedContractor}
-          options={data.contractors.map((c) => ({ value: c.id, label: c.name }))}
-          placeholder="— Выбрать подрядчика —" className="max-w-md" />
-      </Card>
+      {!isRepresentative && (
+        <Card className="p-4">
+          <Select value={selectedContractor} onChange={setSelectedContractor}
+            options={data.contractors.map((c) => ({ value: c.id, label: c.name }))}
+            placeholder="— Выбрать подрядчика —" className="max-w-md" />
+        </Card>
+      )}
 
       {!selectedContractor ? (
         <Card><EmptyState icon={Users} message="Выберите подрядчика, чтобы увидеть доступные материалы" /></Card>
