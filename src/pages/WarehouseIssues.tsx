@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Plus, Truck, Trash2, Edit3, Search, Download, X, CheckCircle, Clock, Layers, ShoppingCart } from 'lucide-react';
+import { Plus, Truck, Trash2, Edit3, Search, Download, X, CheckCircle, Clock, Layers, ShoppingCart, MapPin } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useData } from '@/lib/useData';
 import { Card, CardHeader, Button, Input, Select, SearchSelect, Modal, Badge, PageContainer, LoadingSpinner, EmptyState } from '@/components/ui';
@@ -23,6 +23,63 @@ export default function WarehouseIssues() {
   const [filterContractor, setFilterContractor] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [detailModalOpen, setDetailModalOpen] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'contractors' | 'other'>('contractors');
+
+  // Other-site issue form
+  const [otherModalOpen, setOtherModalOpen] = useState(false);
+  const [otherForm, setOtherForm] = useState({ issue_date: new Date().toISOString().slice(0, 10), site_name: '', received_by: '', notes: '' });
+  const [otherItems, setOtherItems] = useState<{ material_id: string; material_name: string; quantity: string; unit: string }[]>([]);
+  const [otherDetailOpen, setOtherDetailOpen] = useState<string | null>(null);
+
+  const otherItemsByIssue = useMemo(() => {
+    const map = new Map<string, typeof data.otherSiteIssueItems>();
+    for (const item of data.otherSiteIssueItems) {
+      const arr = map.get(item.other_site_issue_id) || [];
+      arr.push(item);
+      map.set(item.other_site_issue_id, arr);
+    }
+    return map;
+  }, [data.otherSiteIssueItems]);
+
+  const openOtherCreate = () => {
+    setOtherForm({ issue_date: new Date().toISOString().slice(0, 10), site_name: '', received_by: '', notes: '' });
+    setOtherItems([{ material_id: '', material_name: '', quantity: '', unit: '' }]);
+    setOtherModalOpen(true);
+  };
+
+  const addOtherRow = () => setOtherItems([...otherItems, { material_id: '', material_name: '', quantity: '', unit: '' }]);
+  const removeOtherRow = (idx: number) => setOtherItems(otherItems.filter((_, i) => i !== idx));
+
+  const handleOtherSave = async () => {
+    if (!otherForm.site_name.trim()) return;
+    const validItems = otherItems.filter((it) => it.material_name.trim() && it.quantity);
+    if (validItems.length === 0) return;
+    const { data: inserted } = await supabase.from('other_site_issues').insert({
+      issue_date: otherForm.issue_date,
+      site_name: otherForm.site_name.trim(),
+      received_by: otherForm.received_by.trim() || null,
+      notes: otherForm.notes.trim() || null,
+    }).select().single();
+    if (inserted) {
+      await supabase.from('other_site_issue_items').insert(
+        validItems.map((it) => ({
+          other_site_issue_id: inserted.id,
+          material_id: it.material_id || null,
+          material_name: it.material_name.trim(),
+          quantity: parseFloat(it.quantity),
+          unit: it.unit.trim() || null,
+        })),
+      );
+    }
+    setOtherModalOpen(false);
+    await refresh();
+  };
+
+  const handleOtherDelete = async (id: string) => {
+    if (!confirm('Удалить запись?')) return;
+    await supabase.from('other_site_issues').delete().eq('id', id);
+    await refresh();
+  };
 
   // Per-material issue modal (table-based flow)
   const [issueMaterialId, setIssueMaterialId] = useState<string | null>(null);
@@ -260,6 +317,28 @@ export default function WarehouseIssues() {
 
   return (
     <PageContainer>
+      {/* Tabs */}
+      <div className="flex gap-1 bg-slate-100 rounded-xl p-1 w-fit">
+        <button
+          onClick={() => setActiveTab('contractors')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+            activeTab === 'contractors' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          <span className="flex items-center gap-2"><Truck className="w-4 h-4" /> Выдача подрядчикам</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('other')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+            activeTab === 'other' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          <span className="flex items-center gap-2"><MapPin className="w-4 h-4" /> Выдача на другие участки</span>
+        </button>
+      </div>
+
+      {activeTab === 'contractors' && (
+      <>
       <div className="flex items-center justify-between flex-wrap gap-2">
         <p className="text-sm text-slate-500">Всего выдач: {data.issues.length}</p>
         <div className="flex gap-2">
@@ -344,6 +423,8 @@ export default function WarehouseIssues() {
           </div>
         )}
       </Card>
+      </>
+      )}
 
       {/* Create/edit modal */}
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Редактировать выдачу' : 'Новая выдача'} wide>
@@ -531,6 +612,190 @@ export default function WarehouseIssues() {
           )}
         </div>
       </Modal>
+
+      {activeTab === 'other' && (
+        <>
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <p className="text-sm text-slate-500">Всего записей: {data.otherSiteIssues.length}</p>
+            <Button onClick={openOtherCreate}>
+              <Plus className="w-4 h-4" /> Новая выдача
+            </Button>
+          </div>
+
+          <Card>
+            <CardHeader title="Выдача на другие участки" subtitle="Свободная форма: участок, ответственный, материалы" />
+            {data.otherSiteIssues.length === 0 ? (
+              <EmptyState icon={MapPin} message="Выдач нет" />
+            ) : (
+              <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0">
+                    <tr className="bg-slate-50 text-slate-600 text-xs uppercase tracking-wider">
+                      <th className="text-left px-4 py-2.5 font-medium">Дата</th>
+                      <th className="text-left px-4 py-2.5 font-medium">Участок</th>
+                      <th className="text-left px-4 py-2.5 font-medium">Принял</th>
+                      <th className="text-center px-4 py-2.5 font-medium">Позиций</th>
+                      <th className="text-right px-4 py-2.5 font-medium">Действия</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {data.otherSiteIssues.map((iss) => (
+                      <tr key={iss.id} className="hover:bg-slate-50">
+                        <td className="px-4 py-2.5 text-slate-500 text-xs whitespace-nowrap">{new Date(iss.issue_date).toLocaleDateString('ru-RU')}</td>
+                        <td className="px-4 py-2.5 text-slate-800 font-medium">{iss.site_name}</td>
+                        <td className="px-4 py-2.5 text-slate-600">{iss.received_by || '—'}</td>
+                        <td className="px-4 py-2.5 text-center text-slate-600">{otherItemsByIssue.get(iss.id)?.length || 0}</td>
+                        <td className="px-4 py-2.5 text-right">
+                          <div className="flex justify-end gap-1">
+                            <button onClick={() => setOtherDetailOpen(iss.id)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500" title="Детали">
+                              <Layers className="w-4 h-4" />
+                            </button>
+                            <button onClick={() => handleOtherDelete(iss.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-500">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+
+          {/* Other-site detail modal */}
+          <Modal open={!!otherDetailOpen} onClose={() => setOtherDetailOpen(null)} title="Состав выдачи" wide>
+            {(() => {
+              const iss = data.otherSiteIssues.find((i) => i.id === otherDetailOpen);
+              const items = otherItemsByIssue.get(otherDetailOpen || '') || [];
+              if (!iss) return null;
+              return (
+                <div>
+                  <div className="mb-3 text-sm text-slate-500 space-y-1">
+                    <div><span className="font-medium text-slate-700">Участок:</span> {iss.site_name}</div>
+                    <div><span className="font-medium text-slate-700">Дата:</span> {new Date(iss.issue_date).toLocaleDateString('ru-RU')}</div>
+                    {iss.received_by && <div><span className="font-medium text-slate-700">Принял:</span> {iss.received_by}</div>}
+                    {iss.notes && <div><span className="font-medium text-slate-700">Примечание:</span> {iss.notes}</div>}
+                  </div>
+                  {items.length === 0 ? (
+                    <p className="text-sm text-slate-400 text-center py-4">Позиций нет</p>
+                  ) : (
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-slate-50 text-slate-600 text-xs uppercase tracking-wider">
+                          <th className="text-left px-4 py-2.5 font-medium">Материал</th>
+                          <th className="text-right px-4 py-2.5 font-medium">Кол-во</th>
+                          <th className="text-left px-4 py-2.5 font-medium">Ед.</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {items.map((it) => (
+                          <tr key={it.id}>
+                            <td className="px-4 py-2.5 text-slate-800 font-medium">{it.material_name}</td>
+                            <td className="px-4 py-2.5 text-right text-slate-800 font-semibold">{it.quantity}</td>
+                            <td className="px-4 py-2.5 text-slate-500 text-xs">{it.unit || '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              );
+            })()}
+          </Modal>
+
+          {/* Other-site create modal */}
+          <Modal open={otherModalOpen} onClose={() => setOtherModalOpen(false)} title="Новая выдача на другой участок" wide>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm font-medium text-slate-700 mb-1 block">Участок <span className="text-red-500">*</span></label>
+                  <Input value={otherForm.site_name} onChange={(v) => setOtherForm({ ...otherForm, site_name: v })} placeholder="Название участка" />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-slate-700 mb-1 block">Дата</label>
+                  <Input type="date" value={otherForm.issue_date} onChange={(v) => setOtherForm({ ...otherForm, issue_date: v })} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm font-medium text-slate-700 mb-1 block">Кто принял</label>
+                  <Input value={otherForm.received_by} onChange={(v) => setOtherForm({ ...otherForm, received_by: v })} placeholder="ФИО ответственного" />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-slate-700 mb-1 block">Примечание</label>
+                  <Input value={otherForm.notes} onChange={(v) => setOtherForm({ ...otherForm, notes: v })} placeholder="Доп. информация" />
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-sm font-medium text-slate-700">Материалы <span className="text-red-500">*</span></label>
+                  <button onClick={addOtherRow} className="text-xs text-blue-600 hover:underline flex items-center gap-1">
+                    <Plus className="w-3.5 h-3.5" /> Добавить
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {otherItems.map((it, idx) => (
+                    <div key={idx} className="grid grid-cols-12 gap-2 items-center">
+                      <div className="col-span-5">
+                        <SearchSelect
+                          value={it.material_id}
+                          onChange={(v) => {
+                            const c = [...otherItems];
+                            c[idx].material_id = v;
+                            const mat = data.materials.find((m) => m.id === v);
+                            if (mat) { c[idx].material_name = mat.name; c[idx].unit = mat.unit || ''; }
+                            setOtherItems(c);
+                          }}
+                          options={data.materials.map((m) => ({ value: m.id, label: `${m.name}${m.article ? ' (' + m.article + ')' : ''}` }))}
+                          placeholder="Из справочника..."
+                        />
+                      </div>
+                      <div className="col-span-3">
+                        <input
+                          value={it.material_name}
+                          onChange={(e) => { const c = [...otherItems]; c[idx].material_name = e.target.value; setOtherItems(c); }}
+                          placeholder="Или введите вручную"
+                          className="w-full px-2 py-1.5 rounded-lg border border-slate-300 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div className="col-span-2">
+                        <input
+                          type="number"
+                          value={it.quantity}
+                          onChange={(e) => { const c = [...otherItems]; c[idx].quantity = e.target.value; setOtherItems(c); }}
+                          placeholder="Кол-во"
+                          className="w-full px-1.5 py-1.5 rounded-lg border border-slate-300 text-xs text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div className="col-span-1">
+                        <input
+                          value={it.unit}
+                          onChange={(e) => { const c = [...otherItems]; c[idx].unit = e.target.value; setOtherItems(c); }}
+                          placeholder="Ед."
+                          className="w-full px-1.5 py-1.5 rounded-lg border border-slate-300 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div className="col-span-1 flex justify-center">
+                        <button onClick={() => removeOtherRow(idx)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg">
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-slate-400 mt-2">Можно выбрать материал из справочника или написать название вручную. Единица измерения заполнится автоматически при выборе из справочника.</p>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="secondary" onClick={() => setOtherModalOpen(false)}>Отмена</Button>
+                <Button onClick={handleOtherSave} disabled={!otherForm.site_name.trim()}>Сохранить</Button>
+              </div>
+            </div>
+          </Modal>
+        </>
+      )}
 
       {/* Per-material issue modal */}
       <Modal open={!!issueMaterialId} onClose={() => setIssueMaterialId(null)} title={`Выдать: ${materialMap.get(issueMaterialId || '')?.name || ''}`} wide>

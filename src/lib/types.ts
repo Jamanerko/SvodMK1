@@ -107,6 +107,24 @@ export interface WarehouseIssue {
   created_at: string;
 }
 
+export interface OtherSiteIssue {
+  id: string;
+  issue_date: string;
+  site_name: string;
+  received_by: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface OtherSiteIssueItem {
+  id: string;
+  other_site_issue_id: string;
+  material_id: string | null;
+  material_name: string;
+  quantity: number;
+  unit: string | null;
+}
+
 export interface WarehouseIssueItem {
   id: string;
   warehouse_issue_id: string;

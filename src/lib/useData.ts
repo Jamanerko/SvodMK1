@@ -12,6 +12,8 @@ import type {
   WarehouseIssueItem,
   WarehouseIssueReceipt,
   ContractorObject,
+  OtherSiteIssue,
+  OtherSiteIssueItem,
 } from '@/lib/types';
 
 interface CachedData {
@@ -26,6 +28,8 @@ interface CachedData {
   issues: WarehouseIssue[];
   issueItems: WarehouseIssueItem[];
   issueReceipts: WarehouseIssueReceipt[];
+  otherSiteIssues: OtherSiteIssue[];
+  otherSiteIssueItems: OtherSiteIssueItem[];
 }
 
 let cache: CachedData | null = null;
@@ -44,6 +48,8 @@ async function fetchAll(): Promise<CachedData> {
     { data: issues },
     { data: issueItems },
     { data: issueReceipts },
+    { data: otherSiteIssues },
+    { data: otherSiteIssueItems },
   ] = await Promise.all([
     supabase.from('objects').select('*').order('sequence_order'),
     supabase.from('materials').select('*').order('name'),
@@ -56,6 +62,8 @@ async function fetchAll(): Promise<CachedData> {
     supabase.from('warehouse_issues').select('*').order('issue_date', { ascending: false }),
     supabase.from('warehouse_issue_items').select('*'),
     supabase.from('warehouse_issue_receipts').select('*'),
+    supabase.from('other_site_issues').select('*').order('issue_date', { ascending: false }),
+    supabase.from('other_site_issue_items').select('*'),
   ]);
 
   return {
@@ -70,6 +78,8 @@ async function fetchAll(): Promise<CachedData> {
     issues: issues || [],
     issueItems: issueItems || [],
     issueReceipts: issueReceipts || [],
+    otherSiteIssues: otherSiteIssues || [],
+    otherSiteIssueItems: otherSiteIssueItems || [],
   };
 }
 
@@ -86,6 +96,8 @@ export function useData() {
     issues: [],
     issueItems: [],
     issueReceipts: [],
+    otherSiteIssues: [],
+    otherSiteIssueItems: [],
   });
   const [loading, setLoading] = useState(!cache);
 
