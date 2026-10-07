@@ -10,6 +10,7 @@ export default function WarehouseIssues() {
   const { data, loading, refresh } = useData();
   const [modalOpen, setModalOpen] = useState(false);
   const [stockModalOpen, setStockModalOpen] = useState(false);
+  const [stockSearch, setStockSearch] = useState('');
   const [editing, setEditing] = useState<string | null>(null);
   const [form, setForm] = useState({
     contractor_id: '',
@@ -27,6 +28,9 @@ export default function WarehouseIssues() {
   const [issueMaterialId, setIssueMaterialId] = useState<string | null>(null);
   const [issueContractor, setIssueContractor] = useState('');
   const [issueDate, setIssueDate] = useState(new Date().toISOString().slice(0, 10));
+  const [issueAdditionalObjects, setIssueAdditionalObjects] = useState('');
+  const [issueComment, setIssueComment] = useState('');
+  const [issueReceivedBy, setIssueReceivedBy] = useState('');
   const [issueRows, setIssueRows] = useState<{ object_id: string; required: number; available: number; issueQty: string }[]>([]);
 
   const contractorMap = useMemo(() => new Map(data.contractors.map((c) => [c.id, c])), [data.contractors]);
@@ -96,6 +100,14 @@ export default function WarehouseIssues() {
       .filter((d) => d.available > 0.01)
       .sort((a, b) => b.available - a.available);
   }, [data.materials, receivedByMaterial, issuedByMaterial]);
+
+  const visibleStockMaterials = useMemo(() => {
+    const query = stockSearch.trim().toLowerCase();
+    if (!query) return stockMaterials;
+    return stockMaterials.filter(({ material }) =>
+      `${material.name} ${material.article || ''}`.toLowerCase().includes(query),
+    );
+  }, [stockMaterials, stockSearch]);
 
   const enriched = useMemo(() => {
     return data.issues.map((i) => ({ ...i, contractor: contractorMap.get(i.contractor_id) }));
@@ -174,6 +186,9 @@ export default function WarehouseIssues() {
     setIssueMaterialId(materialId);
     setIssueContractor('');
     setIssueDate(new Date().toISOString().slice(0, 10));
+    setIssueAdditionalObjects('');
+    setIssueComment('');
+    setIssueReceivedBy('');
     setIssueRows([]);
   };
 
@@ -204,6 +219,9 @@ export default function WarehouseIssues() {
       contractor_id: issueContractor,
       issue_date: issueDate,
       status: 'planned',
+      additional_objects: issueAdditionalObjects.trim() || null,
+      issue_comment: issueComment.trim() || null,
+      received_by: issueReceivedBy.trim() || null,
     }).select().single();
 
     if (inserted) {
@@ -256,7 +274,7 @@ export default function WarehouseIssues() {
 
       <Card>
         <CardHeader
-          title="Выдача со склада подрядчикам"
+          title="Выдача со склада"
           subtitle="Выдача материалов на конкретные объекты"
           action={
             <button onClick={handleExport} className="px-3 py-1.5 text-xs rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 font-medium flex items-center gap-1.5">
@@ -423,7 +441,14 @@ export default function WarehouseIssues() {
             <div>
               {issue && (
                 <div className="mb-3 text-sm text-slate-500">
-                  Подрядчик: <span className="font-medium text-slate-700">{contractorMap.get(issue.contractor_id)?.name}</span> · Дата: {new Date(issue.issue_date).toLocaleDateString('ru-RU')}
+                  <div>Подрядчик: <span className="font-medium text-slate-700">{contractorMap.get(issue.contractor_id)?.name}</span> · Дата: {new Date(issue.issue_date).toLocaleDateString('ru-RU')}</div>
+                  {(issue.received_by || issue.additional_objects || issue.issue_comment) && (
+                    <div className="mt-2 space-y-1 text-xs text-slate-500">
+                      {issue.received_by && <div><span className="font-medium text-slate-700">Принял:</span> {issue.received_by}</div>}
+                      {issue.additional_objects && <div><span className="font-medium text-slate-700">Другие объекты:</span> {issue.additional_objects}</div>}
+                      {issue.issue_comment && <div><span className="font-medium text-slate-700">Комментарий:</span> {issue.issue_comment}</div>}
+                    </div>
+                  )}
                 </div>
               )}
               <table className="w-full text-sm">
@@ -456,13 +481,24 @@ export default function WarehouseIssues() {
       </Modal>
 
       {/* Stock table modal — "Выдать по таблице" */}
-      <Modal open={stockModalOpen} onClose={() => setStockModalOpen(false)} title="Выдать материалы со склада" wide>
+      <Modal open={stockModalOpen} onClose={() => { setStockModalOpen(false); setStockSearch(''); }} title="Выдать материалы со склада" wide>
         <div className="space-y-4">
           <p className="text-sm text-slate-500">
-            Ниже — материалы, доступные на складе. Нажмите «Выдать» у нужного материала, выберите подрядчика и введите количество по каждому объекту.
+            Ниже — материалы, доступные на складе. Найдите нужный материал, нажмите «Выдать», выберите подрядчика и введите количество по каждому объекту.
           </p>
-          {stockMaterials.length === 0 ? (
-            <p className="text-sm text-slate-400 text-center py-4">Нет доступных материалов на складе</p>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              value={stockSearch}
+              onChange={(e) => setStockSearch(e.target.value)}
+              placeholder="Поиск материала или артикула..."
+              className="w-full pl-10 pr-3 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          {visibleStockMaterials.length === 0 ? (
+            <p className="text-sm text-slate-400 text-center py-4">
+              {stockMaterials.length === 0 ? 'Нет доступных материалов на складе' : 'Материал не найден'}
+            </p>
           ) : (
             <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
               <table className="w-full text-sm">
@@ -476,7 +512,7 @@ export default function WarehouseIssues() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {stockMaterials.map((d) => (
+                  {visibleStockMaterials.map((d) => (
                     <tr key={d.material.id} className="hover:bg-slate-50">
                       <td className="px-3 py-2 text-slate-800 font-medium">{d.material.name}</td>
                       <td className="px-3 py-2 text-right text-slate-700">{d.received}</td>
@@ -512,6 +548,20 @@ export default function WarehouseIssues() {
             <div>
               <label className="text-sm font-medium text-slate-700 mb-1 block">Дата выдачи</label>
               <Input type="date" value={issueDate} onChange={setIssueDate} />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div>
+              <label className="text-sm font-medium text-slate-700 mb-1 block">Другие объекты</label>
+              <Input value={issueAdditionalObjects} onChange={setIssueAdditionalObjects} placeholder="Если нет в списке" />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-700 mb-1 block">Ответственный</label>
+              <Input value={issueReceivedBy} onChange={setIssueReceivedBy} placeholder="Кто принял выдачу" />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-700 mb-1 block">Комментарий</label>
+              <Input value={issueComment} onChange={setIssueComment} placeholder="Дополнительные сведения" />
             </div>
           </div>
           <p className="text-sm text-slate-500">

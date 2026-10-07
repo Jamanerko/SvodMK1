@@ -101,6 +101,9 @@ export interface WarehouseIssue {
   issue_date: string;
   status: WarehouseIssueStatus;
   notes: string | null;
+  additional_objects: string | null;
+  issue_comment: string | null;
+  received_by: string | null;
   created_at: string;
 }
 

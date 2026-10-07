@@ -43,7 +43,7 @@ const NAV: NavItem[] = [
   { key: 'requirements', label: 'Потребность', icon: ClipboardList, group: 'Проект' },
   { key: 'corrections', label: 'Корректировки', icon: History, group: 'Проект' },
   { key: 'receipts', label: 'Приход на склад', icon: Warehouse, group: 'Склад' },
-  { key: 'issues', label: 'Выдача подрядчикам', icon: Truck, group: 'Склад' },
+  { key: 'issues', label: 'Выдача со склада', icon: Truck, group: 'Склад' },
   { key: 'purchase-requests', label: 'Заявки на закуп', icon: FileText, group: 'Закупки' },
   { key: 'contractor-portal', label: 'Кабинет подрядчика', icon: Users, group: 'Сервис' },
   { key: 'access-control', label: 'Управление доступом', icon: Shield, group: 'Администрирование', adminOnly: true },
