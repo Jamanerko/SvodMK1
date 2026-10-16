@@ -8,6 +8,7 @@ import type {
   Requirement,
   WarehouseReceipt,
   PurchaseRequest,
+  PurchaseRequestItem,
   WarehouseIssue,
   WarehouseIssueItem,
   WarehouseIssueReceipt,
@@ -25,6 +26,7 @@ interface CachedData {
   requirements: Requirement[];
   receipts: WarehouseReceipt[];
   purchaseRequests: PurchaseRequest[];
+  purchaseRequestItems: PurchaseRequestItem[];
   issues: WarehouseIssue[];
   issueItems: WarehouseIssueItem[];
   issueReceipts: WarehouseIssueReceipt[];
@@ -61,6 +63,7 @@ async function fetchAll(): Promise<CachedData> {
     requirements,
     { data: receipts },
     { data: purchaseRequests },
+    { data: purchaseRequestItems },
     { data: issues },
     { data: issueItems },
     { data: issueReceipts },
@@ -75,6 +78,7 @@ async function fetchAll(): Promise<CachedData> {
     requirementsPromise,
     supabase.from('warehouse_receipts').select('*').order('receipt_date', { ascending: false }),
     supabase.from('purchase_requests').select('*').order('request_date', { ascending: false }),
+    supabase.from('purchase_request_items').select('*'),
     supabase.from('warehouse_issues').select('*').order('issue_date', { ascending: false }),
     supabase.from('warehouse_issue_items').select('*'),
     supabase.from('warehouse_issue_receipts').select('*'),
@@ -91,6 +95,7 @@ async function fetchAll(): Promise<CachedData> {
     requirements: requirements || [],
     receipts: receipts || [],
     purchaseRequests: purchaseRequests || [],
+    purchaseRequestItems: purchaseRequestItems || [],
     issues: issues || [],
     issueItems: issueItems || [],
     issueReceipts: issueReceipts || [],
@@ -109,6 +114,7 @@ export function useData() {
     requirements: [],
     receipts: [],
     purchaseRequests: [],
+    purchaseRequestItems: [],
     issues: [],
     issueItems: [],
     issueReceipts: [],

@@ -59,6 +59,17 @@ export default function PurchaseRequests({ initialMaterialId, onInitialMaterialH
     () => new Map(data.requirements.map((r) => [`${r.material_id}:${r.object_id}`, r.quantity])),
     [data.requirements],
   );
+  const orderedByMaterialObject = useMemo(() => {
+    const requestMap = new Map(data.purchaseRequests.map((pr) => [pr.id, pr]));
+    const ordered = new Map<string, number>();
+    for (const item of data.purchaseRequestItems) {
+      const request = requestMap.get(item.purchase_request_id);
+      if (!request || request.status === 'cancelled' || request.id === editing) continue;
+      const key = `${request.material_id}:${item.object_id}`;
+      ordered.set(key, (ordered.get(key) || 0) + item.quantity);
+    }
+    return ordered;
+  }, [data.purchaseRequests, data.purchaseRequestItems, editing]);
 
   const enriched = useMemo(() => {
     return data.purchaseRequests.map((pr) => ({ ...pr, material: materialMap.get(pr.material_id) }));
@@ -383,7 +394,9 @@ export default function PurchaseRequests({ initialMaterialId, onInitialMaterialH
                 setForm({ ...form, material_id: v });
                 setItemBreakdown((current) => current.map((item) => {
                   const required = item.object_id ? requirementMap.get(`${v}:${item.object_id}`) : undefined;
-                  return { ...item, quantity: required === undefined ? item.quantity : String(required) };
+                  const ordered = item.object_id ? orderedByMaterialObject.get(`${v}:${item.object_id}`) || 0 : 0;
+                  const remaining = required === undefined ? undefined : Math.max(0, required - ordered);
+                  return { ...item, quantity: remaining === undefined ? item.quantity : String(remaining) };
                 }));
               }}
               options={data.materials
@@ -465,19 +478,27 @@ export default function PurchaseRequests({ initialMaterialId, onInitialMaterialH
                       onChange={(v) => {
                         const c = [...itemBreakdown];
                         const required = form.material_id ? requirementMap.get(`${form.material_id}:${v}`) : undefined;
-                        c[idx] = { object_id: v, quantity: required === undefined ? '' : String(required) };
+                        const ordered = form.material_id ? orderedByMaterialObject.get(`${form.material_id}:${v}`) || 0 : 0;
+                        const remaining = required === undefined ? undefined : Math.max(0, required - ordered);
+                        c[idx] = { object_id: v, quantity: remaining === undefined ? '' : String(remaining) };
                         setItemBreakdown(c);
                       }}
                       options={data.objects
                         .filter((o) => {
                           const req = form.material_id ? requirementMap.get(`${form.material_id}:${o.id}`) : undefined;
-                          return req !== undefined && req > 0 && (o.id === item.object_id || !itemBreakdown.some((b, bi) => bi !== idx && b.object_id === o.id));
+                          const ordered = form.material_id ? orderedByMaterialObject.get(`${form.material_id}:${o.id}`) || 0 : 0;
+                          const remaining = req === undefined ? 0 : req - ordered;
+                          return remaining > 0 && !itemBreakdown.some((b, bi) => bi !== idx && b.object_id === o.id);
                         })
-                        .map((o) => ({
-                          value: o.id,
-                          label: o.name,
-                          meta: `${requirementMap.get(`${form.material_id}:${o.id}`)} шт.`,
-                        }))}
+                        .map((o) => {
+                          const req = requirementMap.get(`${form.material_id}:${o.id}`) || 0;
+                          const ordered = orderedByMaterialObject.get(`${form.material_id}:${o.id}`) || 0;
+                          return {
+                            value: o.id,
+                            label: o.name,
+                            meta: `${Math.max(0, req - ordered)} шт.`,
+                          };
+                        })}
                       placeholder="Выберите объект"
                       className="w-full min-w-0"
                       renderOption={(option) => (
