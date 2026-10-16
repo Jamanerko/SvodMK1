@@ -35,11 +35,12 @@ export default function Requirements() {
       if (filterMaterial && r.material_id !== filterMaterial) return false;
       if (search) {
         const s = search.toLowerCase();
-        return (
-          r.material?.name.toLowerCase().includes(s) ||
-          r.object?.name.toLowerCase().includes(s) ||
-          (r.material?.article || '').toLowerCase().includes(s)
-        );
+        const searchText = [
+          r.material?.name || '',
+          r.material?.article || '',
+          r.object?.name || '',
+        ].join(' ').toLowerCase();
+        return searchText.includes(s);
       }
       return true;
     });
