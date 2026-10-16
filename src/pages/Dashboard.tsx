@@ -8,6 +8,7 @@ import { exportToExcel, exportToPDF } from '@/lib/export';
 export default function Dashboard() {
   const { data, loading } = useData();
   const [drillDown, setDrillDown] = useState<{ type: string; title: string; contractorId?: string } | null>(null);
+  const [deficitSearch, setDeficitSearch] = useState('');
 
   const stats = useMemo(() => {
     const materialMap = new Map(data.materials.map((m) => [m.id, m]));
@@ -101,6 +102,12 @@ export default function Dashboard() {
     const body = stats.deficits.map((d) => [d.material, d.article, d.unit, d.required, d.ordered, d.deficit, d.onHand]);
     exportToPDF('Дефицит материалов', headers, body, 'deficity');
   };
+
+  const filteredDeficits = useMemo(() => {
+    const query = deficitSearch.trim().toLowerCase();
+    if (!query) return stats.deficits;
+    return stats.deficits.filter((d) => `${d.material} ${d.article} ${d.category}`.toLowerCase().includes(query));
+  }, [stats.deficits, deficitSearch]);
 
   if (loading) return <LoadingSpinner />;
 
@@ -280,10 +287,39 @@ export default function Dashboard() {
             </div>
           }
         />
+        {stats.deficits.length > 0 && (
+          <div className="px-4 py-3 border-b border-slate-100">
+            <div className="relative max-w-md">
+              <input
+                value={deficitSearch}
+                onChange={(e) => setDeficitSearch(e.target.value)}
+                placeholder="Найти материал или артикул..."
+                className="w-full pl-3 pr-9 py-2 rounded-lg border border-slate-300 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+              {deficitSearch && (
+                <button
+                  type="button"
+                  onClick={() => setDeficitSearch('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600"
+                  aria-label="Очистить поиск"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+            <p className="mt-1.5 text-xs text-slate-400">
+              {deficitSearch ? `Найдено: ${filteredDeficits.length}` : `Всего дефицитов: ${stats.deficits.length}`}
+            </p>
+          </div>
+        )}
         {stats.deficits.length === 0 ? (
           <div className="p-8 text-center text-slate-400 text-sm">
             <AlertTriangle className="w-8 h-8 mx-auto mb-2 text-green-500" />
             Дефицитов нет — всё заказано
+          </div>
+        ) : filteredDeficits.length === 0 ? (
+          <div className="p-8 text-center text-slate-400 text-sm">
+            По запросу «{deficitSearch}» материалы не найдены
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -299,7 +335,7 @@ export default function Dashboard() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {stats.deficits.slice(0, 20).map((d, i) => (
+                {filteredDeficits.slice(0, 20).map((d, i) => (
                   <tr key={i} className="hover:bg-slate-50">
                     <td className="px-4 py-2.5 text-slate-800">{d.material}</td>
                     <td className="px-4 py-2.5 text-slate-500 text-xs">{d.article}</td>
@@ -315,8 +351,8 @@ export default function Dashboard() {
                 ))}
               </tbody>
             </table>
-            {stats.deficits.length > 20 && (
-              <div className="p-3 text-center text-xs text-slate-400">Показано 20 из {stats.deficits.length}. Экспорт выгрузит все.</div>
+            {filteredDeficits.length > 20 && (
+              <div className="p-3 text-center text-xs text-slate-400">Показано 20 из {filteredDeficits.length}. Экспорт выгрузит все.</div>
             )}
           </div>
         )}
