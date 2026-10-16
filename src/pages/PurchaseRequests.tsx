@@ -55,6 +55,10 @@ export default function PurchaseRequests({ initialMaterialId, onInitialMaterialH
 
   const materialMap = useMemo(() => new Map(data.materials.map((m) => [m.id, m])), [data.materials]);
   const objectMap = useMemo(() => new Map(data.objects.map((o) => [o.id, o])), [data.objects]);
+  const requirementMap = useMemo(
+    () => new Map(data.requirements.map((r) => [`${r.material_id}:${r.object_id}`, r.quantity])),
+    [data.requirements],
+  );
 
   const enriched = useMemo(() => {
     return data.purchaseRequests.map((pr) => ({ ...pr, material: materialMap.get(pr.material_id) }));
@@ -375,7 +379,13 @@ export default function PurchaseRequests({ initialMaterialId, onInitialMaterialH
             <label className="text-sm font-medium text-slate-700 mb-1 block">Материал</label>
             <SearchSelect
               value={form.material_id}
-              onChange={(v) => setForm({ ...form, material_id: v })}
+              onChange={(v) => {
+                setForm({ ...form, material_id: v });
+                setItemBreakdown((current) => current.map((item) => {
+                  const required = item.object_id ? requirementMap.get(`${v}:${item.object_id}`) : undefined;
+                  return { ...item, quantity: required === undefined ? item.quantity : String(required) };
+                }));
+              }}
               options={data.materials.map((m) => ({ value: m.id, label: `${m.name}${m.article ? ' (' + m.article + ')' : ''}` }))}
               placeholder="Выбрать материал..."
             />
@@ -445,13 +455,18 @@ export default function PurchaseRequests({ initialMaterialId, onInitialMaterialH
             ) : (
               <div className="space-y-2">
                 {itemBreakdown.map((item, idx) => (
-                  <div key={idx} className="flex gap-2">
+                  <div key={idx} className="grid grid-cols-[minmax(0,1fr)_6rem_auto] items-center gap-2">
                     <Select
                       value={item.object_id}
-                      onChange={(v) => { const c = [...itemBreakdown]; c[idx].object_id = v; setItemBreakdown(c); }}
+                      onChange={(v) => {
+                        const c = [...itemBreakdown];
+                        const required = form.material_id ? requirementMap.get(`${form.material_id}:${v}`) : undefined;
+                        c[idx] = { object_id: v, quantity: required === undefined ? '' : String(required) };
+                        setItemBreakdown(c);
+                      }}
                       options={data.objects.map((o) => ({ value: o.id, label: o.name }))}
-                      placeholder="Объект..."
-                      className="flex-1"
+                      placeholder="Выберите объект"
+                      className="w-full min-w-0"
                     />
                     <Input type="number" value={item.quantity}
                       onChange={(v) => { const c = [...itemBreakdown]; c[idx].quantity = v; setItemBreakdown(c); }}
