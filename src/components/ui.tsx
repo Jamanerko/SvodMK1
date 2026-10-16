@@ -181,12 +181,14 @@ export function SearchSelect({
   options,
   placeholder = 'Выбрать...',
   className = '',
+  renderOption,
 }: {
   value: string;
   onChange: (v: string) => void;
-  options: { value: string; label: string }[];
+  options: { value: string; label: string; meta?: string }[];
   placeholder?: string;
   className?: string;
+  renderOption?: (option: { value: string; label: string; meta?: string }) => ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -245,11 +247,11 @@ export function SearchSelect({
                     setOpen(false);
                     setQuery('');
                   }}
-                  className={`w-full px-3 py-2 text-left text-sm hover:bg-blue-50 truncate ${
+                  className={`w-full px-3 py-2 text-left text-sm hover:bg-blue-50 ${
                     opt.value === value ? 'bg-blue-50 text-blue-700 font-medium' : 'text-slate-700'
                   }`}
                 >
-                  {opt.label}
+                  {renderOption ? renderOption(opt) : opt.label}
                 </button>
               ))
             )}

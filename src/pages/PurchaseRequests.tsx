@@ -458,7 +458,7 @@ export default function PurchaseRequests({ initialMaterialId, onInitialMaterialH
               <div className="space-y-2">
                 {itemBreakdown.map((item, idx) => (
                   <div key={idx} className="grid grid-cols-[minmax(0,1fr)_6rem_auto] items-center gap-2">
-                    <Select
+                    <SearchSelect
                       value={item.object_id}
                       onChange={(v) => {
                         const c = [...itemBreakdown];
@@ -467,13 +467,23 @@ export default function PurchaseRequests({ initialMaterialId, onInitialMaterialH
                         setItemBreakdown(c);
                       }}
                       options={data.objects
-                        .filter((o) => o.id === item.object_id || !itemBreakdown.some((b, bi) => bi !== idx && b.object_id === o.id))
-                        .map((o) => {
+                        .filter((o) => {
                           const req = form.material_id ? requirementMap.get(`${form.material_id}:${o.id}`) : undefined;
-                          return { value: o.id, label: req !== undefined ? `${o.name} — ${req} шт.` : o.name };
-                        })}
+                          return req !== undefined && req > 0 && (o.id === item.object_id || !itemBreakdown.some((b, bi) => bi !== idx && b.object_id === o.id));
+                        })
+                        .map((o) => ({
+                          value: o.id,
+                          label: o.name,
+                          meta: `${requirementMap.get(`${form.material_id}:${o.id}`)} шт.`,
+                        }))}
                       placeholder="Выберите объект"
                       className="w-full min-w-0"
+                      renderOption={(option) => (
+                        <span className="flex items-center justify-between gap-4 w-full">
+                          <span className="truncate">{option.label}</span>
+                          <span className="shrink-0 text-slate-500 tabular-nums">{option.meta}</span>
+                        </span>
+                      )}
                     />
                     <Input type="number" value={item.quantity}
                       onChange={(v) => { const c = [...itemBreakdown]; c[idx].quantity = v; setItemBreakdown(c); }}
