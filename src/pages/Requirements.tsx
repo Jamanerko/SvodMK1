@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Plus, ClipboardList, Trash2, Edit3, Search, Download, History, AlertTriangle, ChevronUp, ChevronDown } from 'lucide-react';
+import { Plus, ClipboardList, Trash2, Edit3, Search, Download, History, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useData } from '@/lib/useData';
 import { Card, CardHeader, Button, Input, Select, SearchSelect, Modal, Badge, PageContainer, LoadingSpinner, EmptyState } from '@/components/ui';
@@ -17,10 +17,10 @@ export default function Requirements() {
   const [search, setSearch] = useState('');
   const [filterObject, setFilterObject] = useState('');
   const [filterMaterial, setFilterMaterial] = useState('');
-  const [quantitySortDirection, setQuantitySortDirection] = useState<'asc' | 'desc'>('asc');
 
   const materialMap = useMemo(() => new Map(data.materials.map((m) => [m.id, m])), [data.materials]);
   const objectMap = useMemo(() => new Map(data.objects.map((o) => [o.id, o])), [data.objects]);
+  const objectOrder = useMemo(() => new Map(data.objects.map((o, index) => [o.id, index])), [data.objects]);
 
   const enriched = useMemo(() => {
     return data.requirements.map((r) => ({
@@ -46,11 +46,8 @@ export default function Requirements() {
       return true;
     });
 
-    return rows.sort((a, b) => {
-      const comparison = a.quantity - b.quantity;
-      return quantitySortDirection === 'asc' ? comparison : -comparison;
-    });
-  }, [enriched, search, filterObject, filterMaterial, quantitySortDirection]);
+    return rows.sort((a, b) => (objectOrder.get(a.object_id) ?? Number.MAX_SAFE_INTEGER) - (objectOrder.get(b.object_id) ?? Number.MAX_SAFE_INTEGER));
+  }, [enriched, search, filterObject, filterMaterial, objectOrder]);
 
   const openCreate = () => {
     setForm({ material_id: '', object_id: '', quantity: '' });
@@ -225,17 +222,7 @@ export default function Requirements() {
                   <th className="text-left px-4 py-2.5 font-medium">Материал</th>
                   <th className="text-left px-4 py-2.5 font-medium">Артикул</th>
                   <th className="text-left px-4 py-2.5 font-medium">Объект</th>
-                  <th className="text-right px-4 py-2.5 font-medium">
-                    <button
-                      type="button"
-                      onClick={() => setQuantitySortDirection((direction) => direction === 'asc' ? 'desc' : 'asc')}
-                      className="ml-auto inline-flex items-center gap-1.5 hover:text-slate-900 transition-colors"
-                      title={`Сортировка по количеству: ${quantitySortDirection === 'asc' ? 'от меньшего к большему' : 'от большего к меньшему'}`}
-                    >
-                      Кол-во
-                      {quantitySortDirection === 'asc' ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                    </button>
-                  </th>
+                  <th className="text-right px-4 py-2.5 font-medium">Кол-во</th>
                   <th className="text-right px-4 py-2.5 font-medium">Действия</th>
                 </tr>
               </thead>
