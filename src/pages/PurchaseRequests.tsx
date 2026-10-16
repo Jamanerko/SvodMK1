@@ -466,7 +466,12 @@ export default function PurchaseRequests({ initialMaterialId, onInitialMaterialH
                         c[idx] = { object_id: v, quantity: required === undefined ? '' : String(required) };
                         setItemBreakdown(c);
                       }}
-                      options={data.objects.map((o) => ({ value: o.id, label: o.name }))}
+                      options={data.objects
+                        .filter((o) => o.id === item.object_id || !itemBreakdown.some((b, bi) => bi !== idx && b.object_id === o.id))
+                        .map((o) => {
+                          const req = form.material_id ? requirementMap.get(`${form.material_id}:${o.id}`) : undefined;
+                          return { value: o.id, label: req !== undefined ? `${o.name} — ${req} шт.` : o.name };
+                        })}
                       placeholder="Выберите объект"
                       className="w-full min-w-0"
                     />
