@@ -35,14 +35,30 @@ interface CachedData {
 let cache: CachedData | null = null;
 const listeners = new Set<(data: CachedData) => void>();
 
+async function fetchAllRequirements(): Promise<Requirement[]> {
+  const rows: Requirement[] = [];
+  const pageSize = 1000;
+
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from('requirements')
+      .select('*')
+      .range(from, from + pageSize - 1);
+    if (error) throw error;
+    rows.push(...(data || []));
+    if (!data || data.length < pageSize) return rows;
+  }
+}
+
 async function fetchAll(): Promise<CachedData> {
+  const requirementsPromise = fetchAllRequirements();
   const [
     { data: objects },
     { data: materials },
     { data: categories },
     { data: contractors },
     { data: contractorObjects },
-    { data: requirements },
+    requirements,
     { data: receipts },
     { data: purchaseRequests },
     { data: issues },
@@ -56,7 +72,7 @@ async function fetchAll(): Promise<CachedData> {
     supabase.from('material_categories').select('*').order('name'),
     supabase.from('contractors').select('*').order('name'),
     supabase.from('contractor_objects').select('*'),
-    supabase.from('requirements').select('*').limit(10000),
+    requirementsPromise,
     supabase.from('warehouse_receipts').select('*').order('receipt_date', { ascending: false }),
     supabase.from('purchase_requests').select('*').order('request_date', { ascending: false }),
     supabase.from('warehouse_issues').select('*').order('issue_date', { ascending: false }),
