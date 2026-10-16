@@ -38,6 +38,17 @@ export default function PurchaseRequests({ initialMaterialId, onInitialMaterialH
   const [newItemObj, setNewItemObj] = useState('');
   const [newItemQty, setNewItemQty] = useState('');
 
+  const breakdownTotal = useMemo(
+    () => itemBreakdown.reduce((sum, item) => sum + (parseFloat(item.quantity) || 0), 0),
+    [itemBreakdown],
+  );
+
+  useEffect(() => {
+    if (itemBreakdown.length > 0) {
+      setForm((current) => ({ ...current, total_quantity: breakdownTotal > 0 ? String(breakdownTotal) : '' }));
+    }
+  }, [breakdownTotal, itemBreakdown.length]);
+
   // Order modal state
   const [orderMaterialId, setOrderMaterialId] = useState<string | null>(null);
   const [orderRows, setOrderRows] = useState<{ object_id: string; required: number; orderQty: string }[]>([]);
@@ -153,10 +164,10 @@ export default function PurchaseRequests({ initialMaterialId, onInitialMaterialH
       const { data: inserted } = await supabase.from('purchase_requests').insert(payload).select().single();
       prId = inserted?.id;
     }
-    if (prId && itemBreakdown.length > 0) {
+    if (prId) {
       await supabase.from('purchase_request_items').delete().eq('purchase_request_id', prId);
       const items = itemBreakdown
-        .filter((b) => b.object_id && b.quantity)
+        .filter((b) => b.object_id && parseFloat(b.quantity) > 0)
         .map((b) => ({ purchase_request_id: prId!, object_id: b.object_id, quantity: parseFloat(b.quantity) }));
       if (items.length > 0) await supabase.from('purchase_request_items').insert(items);
     }
@@ -371,8 +382,16 @@ export default function PurchaseRequests({ initialMaterialId, onInitialMaterialH
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-sm font-medium text-slate-700 mb-1 block">Количество</label>
-              <Input type="number" value={form.total_quantity} onChange={(v) => setForm({ ...form, total_quantity: v })} />
+              <label className="text-sm font-medium text-slate-700 mb-1 block">Количество (итого)</label>
+              <Input
+                type="number"
+                value={form.total_quantity}
+                onChange={(v) => setForm({ ...form, total_quantity: v })}
+                disabled={itemBreakdown.length > 0}
+              />
+              {itemBreakdown.length > 0 && (
+                <p className="text-xs text-slate-400 mt-1">Сумма автоматически рассчитана по объектам ниже</p>
+              )}
             </div>
             <div>
               <label className="text-sm font-medium text-slate-700 mb-1 block">Тип заявки</label>
