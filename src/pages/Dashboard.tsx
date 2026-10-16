@@ -5,7 +5,7 @@ import { Card, CardHeader, LoadingSpinner, Badge, PageContainer, Modal } from '@
 import { OBJECT_TYPE_LABELS, PR_STATUS_LABELS, PR_STATUS_COLORS, ISSUE_STATUS_LABELS, ISSUE_STATUS_COLORS } from '@/lib/types';
 import { exportToExcel, exportToPDF } from '@/lib/export';
 
-export default function Dashboard() {
+export default function Dashboard({ onOpenPurchaseRequest }: { onOpenPurchaseRequest?: (materialId: string) => void }) {
   const { data, loading } = useData();
   const [drillDown, setDrillDown] = useState<{ type: string; title: string; contractorId?: string } | null>(null);
   const [deficitSearch, setDeficitSearch] = useState('');
@@ -48,7 +48,7 @@ export default function Dashboard() {
       const onHand = (receivedByMaterial.get(m.id) || 0) - (issuedByMaterial.get(m.id) || 0);
       const deficit = required - ordered;
       if (deficit > 0.01) {
-        deficits.push({ material: m.name, article: m.article || '', unit: m.unit, required, ordered, deficit, onHand, category: categoryMap.get(m.category_id || '')?.name || '' });
+        deficits.push({ materialId: m.id, material: m.name, article: m.article || '', unit: m.unit, required, ordered, deficit, onHand, category: categoryMap.get(m.category_id || '')?.name || '' });
       }
     }
     deficits.sort((a, b) => b.deficit - a.deficit);
@@ -332,12 +332,26 @@ export default function Dashboard() {
                   <th className="text-right px-4 py-2.5 font-medium">Заказано</th>
                   <th className="text-right px-4 py-2.5 font-medium">Дефицит</th>
                   <th className="text-right px-4 py-2.5 font-medium">На складе</th>
+                  <th className="text-right px-4 py-2.5 font-medium">Действие</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filteredDeficits.slice(0, 20).map((d, i) => (
-                  <tr key={i} className="hover:bg-slate-50">
-                    <td className="px-4 py-2.5 text-slate-800">{d.material}</td>
+                  <tr
+                    key={i}
+                    onClick={() => onOpenPurchaseRequest?.(d.materialId)}
+                    className="hover:bg-blue-50 cursor-pointer transition-colors"
+                    title="Открыть заявку на закуп"
+                  >
+                    <td className="px-4 py-2.5">
+                      <button
+                        type="button"
+                        onClick={() => onOpenPurchaseRequest?.(d.materialId)}
+                        className="text-left text-blue-700 hover:text-blue-900 hover:underline font-medium"
+                      >
+                        {d.material}
+                      </button>
+                    </td>
                     <td className="px-4 py-2.5 text-slate-500 text-xs">{d.article}</td>
                     <td className="px-4 py-2.5 text-right text-slate-700">{d.required.toLocaleString('ru-RU')}</td>
                     <td className="px-4 py-2.5 text-right text-slate-700">{d.ordered.toLocaleString('ru-RU')}</td>
@@ -347,6 +361,16 @@ export default function Dashboard() {
                       </span>
                     </td>
                     <td className="px-4 py-2.5 text-right text-slate-600">{d.onHand.toLocaleString('ru-RU')}</td>
+                    <td className="px-4 py-2.5 text-right">
+                      <button
+                        type="button"
+                        onClick={() => onOpenPurchaseRequest?.(d.materialId)}
+                        disabled={!onOpenPurchaseRequest}
+                        className="px-2.5 py-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 disabled:opacity-50 disabled:cursor-default text-xs font-medium whitespace-nowrap transition-colors"
+                      >
+                        Оформить закупку
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>

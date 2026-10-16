@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Plus, FileText, Trash2, Edit3, Search, Download, Layers, X, ShoppingCart } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useData } from '@/lib/useData';
@@ -9,7 +9,12 @@ import {
   type PurchaseRequestStatus, type PurchaseRequestType,
 } from '@/lib/types';
 
-export default function PurchaseRequests() {
+interface PurchaseRequestsProps {
+  initialMaterialId?: string | null;
+  onInitialMaterialHandled?: () => void;
+}
+
+export default function PurchaseRequests({ initialMaterialId, onInitialMaterialHandled }: PurchaseRequestsProps) {
   const { data, loading, refresh } = useData();
   const [modalOpen, setModalOpen] = useState(false);
   const [orderModalOpen, setOrderModalOpen] = useState(false);
@@ -90,15 +95,25 @@ export default function PurchaseRequests() {
       .sort((a, b) => b.deficit - a.deficit);
   }, [data.materials, requiredByMaterial, orderedByMaterial]);
 
-  const openCreate = () => {
+  const openCreate = (materialId = '') => {
     setEditing(null);
+    const deficit = deficitMaterials.find((d) => d.material.id === materialId)?.deficit || 0;
     setForm({
-      material_id: '', total_quantity: '', request_type: 'rk', status: 'draft',
+      material_id: materialId,
+      total_quantity: deficit > 0 ? String(deficit) : '',
+      request_type: 'rk', status: 'draft',
       request_date: new Date().toISOString().slice(0, 10), expected_delivery_date: '', actual_delivery_date: '', notes: '',
     });
     setItemBreakdown([]);
     setModalOpen(true);
   };
+
+  useEffect(() => {
+    if (initialMaterialId) {
+      openCreate(initialMaterialId);
+      onInitialMaterialHandled?.();
+    }
+  }, [initialMaterialId]);
 
   const openEdit = async (id: string) => {
     const pr = data.purchaseRequests.find((x) => x.id === id);
@@ -245,7 +260,7 @@ export default function PurchaseRequests() {
           <Button variant="secondary" onClick={() => setOrderModalOpen(true)}>
             <ShoppingCart className="w-4 h-4" /> Заказать по таблице
           </Button>
-          <Button onClick={openCreate}>
+          <Button onClick={() => openCreate()}>
             <Plus className="w-4 h-4" /> Новая заявка
           </Button>
         </div>

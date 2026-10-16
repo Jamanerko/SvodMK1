@@ -54,6 +54,7 @@ function App() {
   const isRepresentative = !!(user && !user.is_admin && user.contractor_id);
   const [page, setPage] = useState<PageKey>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [purchaseMaterialId, setPurchaseMaterialId] = useState<string | null>(null);
 
   useEffect(() => {
     // Representatives only see contractor-portal
@@ -86,13 +87,13 @@ function App() {
   const renderPage = () => {
     if (isRepresentative) return <ContractorPortal />;
     switch (page) {
-      case 'dashboard': return <Dashboard />;
+      case 'dashboard': return <Dashboard onOpenPurchaseRequest={(materialId) => { setPurchaseMaterialId(materialId); setPage('purchase-requests'); }} />;
       case 'objects': return <Objects />;
       case 'materials': return <Materials />;
       case 'requirements': return <Requirements />;
       case 'corrections': return <Corrections />;
       case 'receipts': return <WarehouseReceipts />;
-      case 'purchase-requests': return <PurchaseRequests />;
+      case 'purchase-requests': return <PurchaseRequests initialMaterialId={purchaseMaterialId} onInitialMaterialHandled={() => setPurchaseMaterialId(null)} />;
       case 'issues': return <WarehouseIssues />;
       case 'contractors': return <Contractors />;
       case 'contractor-portal': return <ContractorPortal />;
