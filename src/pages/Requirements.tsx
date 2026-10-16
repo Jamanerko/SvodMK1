@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Plus, ClipboardList, Trash2, Edit3, Search, Download, History, AlertTriangle } from 'lucide-react';
+import { Plus, ClipboardList, Trash2, Edit3, Search, Download, History, AlertTriangle, ChevronUp, ChevronDown } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useData } from '@/lib/useData';
 import { Card, CardHeader, Button, Input, Select, SearchSelect, Modal, Badge, PageContainer, LoadingSpinner, EmptyState } from '@/components/ui';
@@ -17,6 +17,7 @@ export default function Requirements() {
   const [search, setSearch] = useState('');
   const [filterObject, setFilterObject] = useState('');
   const [filterMaterial, setFilterMaterial] = useState('');
+  const [objectSortDirection, setObjectSortDirection] = useState<'asc' | 'desc'>('asc');
 
   const materialMap = useMemo(() => new Map(data.materials.map((m) => [m.id, m])), [data.materials]);
   const objectMap = useMemo(() => new Map(data.objects.map((o) => [o.id, o])), [data.objects]);
@@ -30,7 +31,7 @@ export default function Requirements() {
   }, [data.requirements, materialMap, objectMap]);
 
   const filtered = useMemo(() => {
-    return enriched.filter((r) => {
+    const rows = enriched.filter((r) => {
       if (filterObject && r.object_id !== filterObject) return false;
       if (filterMaterial && r.material_id !== filterMaterial) return false;
       if (search) {
@@ -44,7 +45,12 @@ export default function Requirements() {
       }
       return true;
     });
-  }, [enriched, search, filterObject, filterMaterial]);
+
+    return rows.sort((a, b) => {
+      const comparison = (a.object?.name || '').localeCompare(b.object?.name || '', 'ru');
+      return objectSortDirection === 'asc' ? comparison : -comparison;
+    });
+  }, [enriched, search, filterObject, filterMaterial, objectSortDirection]);
 
   const openCreate = () => {
     setForm({ material_id: '', object_id: '', quantity: '' });
@@ -218,7 +224,17 @@ export default function Requirements() {
                 <tr className="bg-slate-50 text-slate-600 text-xs uppercase tracking-wider">
                   <th className="text-left px-4 py-2.5 font-medium">Материал</th>
                   <th className="text-left px-4 py-2.5 font-medium">Артикул</th>
-                  <th className="text-left px-4 py-2.5 font-medium">Объект</th>
+                  <th className="text-left px-4 py-2.5 font-medium">
+                    <button
+                      type="button"
+                      onClick={() => setObjectSortDirection((direction) => direction === 'asc' ? 'desc' : 'asc')}
+                      className="inline-flex items-center gap-1.5 hover:text-slate-900 transition-colors"
+                      title={`Сортировка по объекту: ${objectSortDirection === 'asc' ? 'по возрастанию' : 'по убыванию'}`}
+                    >
+                      Объект
+                      {objectSortDirection === 'asc' ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                    </button>
+                  </th>
                   <th className="text-right px-4 py-2.5 font-medium">Кол-во</th>
                   <th className="text-right px-4 py-2.5 font-medium">Действия</th>
                 </tr>
