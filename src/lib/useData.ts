@@ -56,7 +56,7 @@ async function fetchAll(): Promise<CachedData> {
     supabase.from('material_categories').select('*').order('name'),
     supabase.from('contractors').select('*').order('name'),
     supabase.from('contractor_objects').select('*'),
-    supabase.from('requirements').select('*'),
+    supabase.from('requirements').select('*').limit(10000),
     supabase.from('warehouse_receipts').select('*').order('receipt_date', { ascending: false }),
     supabase.from('purchase_requests').select('*').order('request_date', { ascending: false }),
     supabase.from('warehouse_issues').select('*').order('issue_date', { ascending: false }),
