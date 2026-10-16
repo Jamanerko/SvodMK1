@@ -446,12 +446,14 @@ export default function PurchaseRequests({ initialMaterialId, onInitialMaterialH
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="text-sm font-medium text-slate-700">Разбивка по объектам</label>
-              <button onClick={addBreakdownRow} className="text-xs text-blue-600 hover:underline flex items-center gap-1">
-                <Plus className="w-3.5 h-3.5" /> Добавить
-              </button>
             </div>
             {itemBreakdown.length === 0 ? (
-              <p className="text-xs text-slate-400 py-2">Не указана — заявка без разбивки</p>
+              <div>
+                <p className="text-xs text-slate-400 py-2">Не указана — заявка без разбивки</p>
+                <button onClick={addBreakdownRow} className="text-xs text-blue-600 hover:underline flex items-center gap-1">
+                  <Plus className="w-3.5 h-3.5" /> Добавить объект
+                </button>
+              </div>
             ) : (
               <div className="space-y-2">
                 {itemBreakdown.map((item, idx) => (
@@ -476,6 +478,9 @@ export default function PurchaseRequests({ initialMaterialId, onInitialMaterialH
                     </button>
                   </div>
                 ))}
+                <button onClick={addBreakdownRow} className="text-xs text-blue-600 hover:underline flex items-center gap-1 pt-1">
+                  <Plus className="w-3.5 h-3.5" /> Добавить объект
+                </button>
               </div>
             )}
           </div>
