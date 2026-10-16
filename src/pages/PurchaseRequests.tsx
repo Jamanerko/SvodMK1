@@ -386,7 +386,9 @@ export default function PurchaseRequests({ initialMaterialId, onInitialMaterialH
                   return { ...item, quantity: required === undefined ? item.quantity : String(required) };
                 }));
               }}
-              options={data.materials.map((m) => ({ value: m.id, label: `${m.name}${m.article ? ' (' + m.article + ')' : ''}` }))}
+              options={data.materials
+                .filter((m) => m.id === form.material_id || deficitMaterials.some((d) => d.material.id === m.id))
+                .map((m) => ({ value: m.id, label: `${m.name}${m.article ? ' (' + m.article + ')' : ''}` }))}
               placeholder="Выбрать материал..."
             />
           </div>
