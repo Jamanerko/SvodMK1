@@ -314,7 +314,7 @@ export default function WarehouseInspections() {
                       <td className="px-4 py-2.5">{index === 0 && <Badge color={INSPECTION_STATUS_COLORS[inspection.status]}>{INSPECTION_STATUS_LABELS[inspection.status]}</Badge>}</td>
                       <td className="px-4 py-2.5 text-right">
                         {index === 0 && <div className="flex justify-end gap-1">
-                          {inspection.status === 'in_review' && <button onClick={() => openResult(inspection.id)} className="p-1.5 rounded-lg hover:bg-green-50 text-green-600" title="Внести результат проверки"><CheckCircle className="w-4 h-4" /></button>}
+                          {inspection.status !== 'cancelled' && <button onClick={() => openResult(inspection.id)} className="p-1.5 rounded-lg hover:bg-green-50 text-green-600" title={inspection.status === 'completed' ? 'Изменить результат проверки' : 'Внести результат проверки'}><CheckCircle className="w-4 h-4" /></button>}
                           {inspection.status === 'in_review' && <button onClick={() => changeStatus(inspection.id, 'cancelled')} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500" title="Отменить"><Ban className="w-4 h-4" /></button>}
                           <button onClick={() => openEdit(inspection.id)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500" title="Изменить"><Edit3 className="w-4 h-4" /></button>
                           <button onClick={() => handleDelete(inspection.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-500" title="Удалить"><Trash2 className="w-4 h-4" /></button>
