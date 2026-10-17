@@ -23,15 +23,33 @@ export default function WarehouseReceipts() {
   const materialMap = useMemo(() => new Map(data.materials.map((m) => [m.id, m])), [data.materials]);
 
   const enriched = useMemo(() => {
-    return data.receipts.map((r) => ({ ...r, material: materialMap.get(r.material_id) }));
-  }, [data.receipts, materialMap]);
+    const manualReceipts = data.receipts.map((receipt) => ({
+      ...receipt,
+      material: materialMap.get(receipt.material_id),
+      fromPurchaseRequest: false,
+    }));
+    const deliveredRequests = data.purchaseRequests
+      .filter((request) => request.status === 'delivered')
+      .map((request) => ({
+        id: `purchase-request-${request.id}`,
+        material_id: request.material_id,
+        quantity: request.total_quantity,
+        receipt_date: request.actual_delivery_date || request.request_date,
+        supplier: 'По заявке на закуп',
+        document_url: null,
+        notes: 'Автоматически из заявки со статусом «Поставлена»',
+        material: materialMap.get(request.material_id),
+        fromPurchaseRequest: true,
+      }));
+    return [...manualReceipts, ...deliveredRequests];
+  }, [data.receipts, data.purchaseRequests, materialMap]);
 
   const filtered = useMemo(() => {
     return enriched.filter((r) => {
       if (filterMaterial && r.material_id !== filterMaterial) return false;
       if (search) {
         const s = search.toLowerCase();
-        return (r.material?.name || '').toLowerCase().includes(s) || (r.supplier || '').toLowerCase().includes(s);
+        return (r.material?.name || '').toLowerCase().includes(s) || (r.supplier || '').toLowerCase().includes(s) || (r.notes || '').toLowerCase().includes(s);
       }
       return true;
     });
@@ -131,7 +149,7 @@ export default function WarehouseReceipts() {
   return (
     <PageContainer>
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <p className="text-sm text-slate-500">Всего приходов: {data.receipts.length}</p>
+        <p className="text-sm text-slate-500">Всего приходов: {enriched.length}</p>
         <Button onClick={openCreate}>
           <Plus className="w-4 h-4" /> Добавить приход
         </Button>
@@ -202,12 +220,14 @@ export default function WarehouseReceipts() {
                     </td>
                     <td className="px-4 py-2.5 text-right">
                       <div className="flex justify-end gap-1">
-                        <button onClick={() => openEdit(r.id)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500">
-                          <Edit3 className="w-4 h-4" />
-                        </button>
-                        <button onClick={() => handleDelete(r.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-500">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        {!r.fromPurchaseRequest && <>
+                          <button onClick={() => openEdit(r.id)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500">
+                            <Edit3 className="w-4 h-4" />
+                          </button>
+                          <button onClick={() => handleDelete(r.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-500">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </>}
                       </div>
                     </td>
                   </tr>
