@@ -146,17 +146,30 @@ export default function WarehouseIssues() {
     return map;
   }, [data.contractorObjects]);
 
+  const inspectionBlockedByMaterial = useMemo(() => {
+    const inspectionMap = new Map(data.inspections.map((inspection) => [inspection.id, inspection]));
+    const map = new Map<string, number>();
+    for (const item of data.inspectionItems) {
+      const inspection = inspectionMap.get(item.inspection_id);
+      if (!inspection || inspection.status === 'cancelled') continue;
+      const blocked = inspection.status === 'in_review' ? item.transferred_quantity : item.defective_quantity;
+      map.set(item.material_id, (map.get(item.material_id) || 0) + blocked);
+    }
+    return map;
+  }, [data.inspections, data.inspectionItems]);
+
   // Materials with available stock (for issue table)
   const stockMaterials = useMemo(() => {
     return data.materials
       .map((m) => {
         const received = receivedByMaterial.get(m.id) || 0;
         const issued = issuedByMaterial.get(m.id) || 0;
-        return { material: m, received, issued, available: received - issued };
+        const inspectionBlocked = inspectionBlockedByMaterial.get(m.id) || 0;
+        return { material: m, received, issued, inspectionBlocked, available: received - issued - inspectionBlocked };
       })
       .filter((d) => d.available > 0.01)
       .sort((a, b) => b.available - a.available);
-  }, [data.materials, receivedByMaterial, issuedByMaterial]);
+  }, [data.materials, receivedByMaterial, issuedByMaterial, inspectionBlockedByMaterial]);
 
   const visibleStockMaterials = useMemo(() => {
     const query = stockSearch.trim().toLowerCase();
@@ -588,6 +601,7 @@ export default function WarehouseIssues() {
                     <th className="text-left px-3 py-2 font-medium">Материал</th>
                     <th className="text-right px-3 py-2 font-medium">Получено</th>
                     <th className="text-right px-3 py-2 font-medium">Выдано</th>
+                    <th className="text-right px-3 py-2 font-medium">На проверке</th>
                     <th className="text-right px-3 py-2 font-medium">Доступно</th>
                     <th className="text-center px-3 py-2 font-medium">Действие</th>
                   </tr>
@@ -598,6 +612,7 @@ export default function WarehouseIssues() {
                       <td className="px-3 py-2 text-slate-800 font-medium">{d.material.name}</td>
                       <td className="px-3 py-2 text-right text-slate-700">{d.received}</td>
                       <td className="px-3 py-2 text-right text-slate-700">{d.issued}</td>
+                      <td className="px-3 py-2 text-right text-amber-600 font-semibold">{d.inspectionBlocked || 0}</td>
                       <td className="px-3 py-2 text-right text-green-600 font-semibold">{d.available}</td>
                       <td className="px-3 py-2 text-center">
                         <Button size="sm" onClick={() => openIssueModal(d.material.id)}>

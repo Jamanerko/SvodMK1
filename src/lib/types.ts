@@ -70,6 +70,27 @@ export interface WarehouseReceipt {
   created_at: string;
 }
 
+export type WarehouseInspectionStatus = 'in_review' | 'completed' | 'cancelled';
+
+export interface WarehouseInspection {
+  id: string;
+  inspection_date: string;
+  destination: string;
+  status: WarehouseInspectionStatus;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface WarehouseInspectionItem {
+  id: string;
+  inspection_id: string;
+  material_id: string;
+  transferred_quantity: number;
+  inspected_quantity: number;
+  defective_quantity: number;
+  created_at: string;
+}
+
 export type PurchaseRequestType = 'rk' | 'rf';
 export type PurchaseRequestStatus = 'draft' | 'submitted' | 'accepted' | 'in_transit' | 'delivered' | 'cancelled';
 
@@ -183,5 +204,17 @@ export const ISSUE_STATUS_LABELS: Record<WarehouseIssueStatus, string> = {
 export const ISSUE_STATUS_COLORS: Record<WarehouseIssueStatus, string> = {
   planned: 'bg-amber-100 text-amber-700',
   confirmed: 'bg-green-100 text-green-700',
+  cancelled: 'bg-red-100 text-red-700',
+};
+
+export const INSPECTION_STATUS_LABELS: Record<WarehouseInspectionStatus, string> = {
+  in_review: 'На проверке',
+  completed: 'Проверено',
+  cancelled: 'Отменено',
+};
+
+export const INSPECTION_STATUS_COLORS: Record<WarehouseInspectionStatus, string> = {
+  in_review: 'bg-amber-100 text-amber-700',
+  completed: 'bg-green-100 text-green-700',
   cancelled: 'bg-red-100 text-red-700',
 };

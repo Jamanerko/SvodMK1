@@ -64,12 +64,21 @@ export default function PurchaseRequests({ initialMaterialId, onInitialMaterialH
     const ordered = new Map<string, number>();
     for (const item of data.purchaseRequestItems) {
       const request = requestMap.get(item.purchase_request_id);
-      if (!request || request.status === 'cancelled' || request.id === editing) continue;
+      if (!request || request.status === 'cancelled') continue;
       const key = `${request.material_id}:${item.object_id}`;
       ordered.set(key, (ordered.get(key) || 0) + item.quantity);
     }
     return ordered;
-  }, [data.purchaseRequests, data.purchaseRequestItems, editing]);
+  }, [data.purchaseRequests, data.purchaseRequestItems]);
+
+  const currentRequestItemQuantities = useMemo(() => {
+    const map = new Map<string, number>();
+    if (!editing) return map;
+    for (const item of data.purchaseRequestItems) {
+      if (item.purchase_request_id === editing) map.set(item.object_id, item.quantity);
+    }
+    return map;
+  }, [data.purchaseRequestItems, editing]);
 
   const enriched = useMemo(() => {
     return data.purchaseRequests.map((pr) => ({ ...pr, material: materialMap.get(pr.material_id) }));
@@ -487,16 +496,22 @@ export default function PurchaseRequests({ initialMaterialId, onInitialMaterialH
                         .filter((o) => {
                           const req = form.material_id ? requirementMap.get(`${form.material_id}:${o.id}`) : undefined;
                           const ordered = form.material_id ? orderedByMaterialObject.get(`${form.material_id}:${o.id}`) || 0 : 0;
-                          const remaining = req === undefined ? 0 : req - ordered;
+                          const currentRowQuantity = editing && form.material_id === data.purchaseRequests.find((pr) => pr.id === editing)?.material_id && o.id === item.object_id
+                            ? currentRequestItemQuantities.get(o.id) || 0
+                            : 0;
+                          const remaining = req === undefined ? 0 : req - ordered + currentRowQuantity;
                           return remaining > 0 && !itemBreakdown.some((b, bi) => bi !== idx && b.object_id === o.id);
                         })
                         .map((o) => {
                           const req = requirementMap.get(`${form.material_id}:${o.id}`) || 0;
                           const ordered = orderedByMaterialObject.get(`${form.material_id}:${o.id}`) || 0;
+                          const currentRowQuantity = editing && form.material_id === data.purchaseRequests.find((pr) => pr.id === editing)?.material_id && o.id === item.object_id
+                            ? currentRequestItemQuantities.get(o.id) || 0
+                            : 0;
                           return {
                             value: o.id,
                             label: o.name,
-                            meta: `${Math.max(0, req - ordered)} шт.`,
+                            meta: `${Math.max(0, req - ordered + currentRowQuantity)} шт.`,
                           };
                         })}
                       placeholder="Выберите объект"

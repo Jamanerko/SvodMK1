@@ -7,6 +7,8 @@ import type {
   Contractor,
   Requirement,
   WarehouseReceipt,
+  WarehouseInspection,
+  WarehouseInspectionItem,
   PurchaseRequest,
   PurchaseRequestItem,
   WarehouseIssue,
@@ -25,6 +27,8 @@ interface CachedData {
   contractorObjects: ContractorObject[];
   requirements: Requirement[];
   receipts: WarehouseReceipt[];
+  inspections: WarehouseInspection[];
+  inspectionItems: WarehouseInspectionItem[];
   purchaseRequests: PurchaseRequest[];
   purchaseRequestItems: PurchaseRequestItem[];
   issues: WarehouseIssue[];
@@ -62,6 +66,8 @@ async function fetchAll(): Promise<CachedData> {
     { data: contractorObjects },
     requirements,
     { data: receipts },
+    { data: inspections },
+    { data: inspectionItems },
     { data: purchaseRequests },
     { data: purchaseRequestItems },
     { data: issues },
@@ -77,6 +83,8 @@ async function fetchAll(): Promise<CachedData> {
     supabase.from('contractor_objects').select('*'),
     requirementsPromise,
     supabase.from('warehouse_receipts').select('*').order('receipt_date', { ascending: false }),
+    supabase.from('warehouse_inspections').select('*').order('inspection_date', { ascending: false }),
+    supabase.from('warehouse_inspection_items').select('*'),
     supabase.from('purchase_requests').select('*').order('request_date', { ascending: false }),
     supabase.from('purchase_request_items').select('*'),
     supabase.from('warehouse_issues').select('*').order('issue_date', { ascending: false }),
@@ -94,6 +102,8 @@ async function fetchAll(): Promise<CachedData> {
     contractorObjects: contractorObjects || [],
     requirements: requirements || [],
     receipts: receipts || [],
+    inspections: inspections || [],
+    inspectionItems: inspectionItems || [],
     purchaseRequests: purchaseRequests || [],
     purchaseRequestItems: purchaseRequestItems || [],
     issues: issues || [],
@@ -113,6 +123,8 @@ export function useData() {
     contractorObjects: [],
     requirements: [],
     receipts: [],
+    inspections: [],
+    inspectionItems: [],
     purchaseRequests: [],
     purchaseRequestItems: [],
     issues: [],

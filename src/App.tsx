@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { LayoutDashboard, MapPin, Package, ClipboardList, Truck, FileText, Users, Warehouse, History, Shield, LogOut, Menu } from 'lucide-react';
+import { LayoutDashboard, MapPin, Package, ClipboardList, Truck, FileText, Users, Warehouse, History, Shield, ShieldCheck, LogOut, Menu } from 'lucide-react';
 import Dashboard from '@/pages/Dashboard';
 import Objects from '@/pages/Objects';
 import Materials from '@/pages/Materials';
 import Requirements from '@/pages/Requirements';
 import WarehouseReceipts from '@/pages/WarehouseReceipts';
+import WarehouseInspections from '@/pages/WarehouseInspections';
 import PurchaseRequests from '@/pages/PurchaseRequests';
 import WarehouseIssues from '@/pages/WarehouseIssues';
 import Contractors from '@/pages/Contractors';
@@ -21,6 +22,7 @@ export type PageKey =
   | 'requirements'
   | 'corrections'
   | 'receipts'
+  | 'inspections'
   | 'purchase-requests'
   | 'issues'
   | 'contractors'
@@ -43,6 +45,7 @@ const NAV: NavItem[] = [
   { key: 'requirements', label: 'Потребность', icon: ClipboardList, group: 'Проект' },
   { key: 'corrections', label: 'Корректировки', icon: History, group: 'Проект' },
   { key: 'receipts', label: 'Приход на склад', icon: Warehouse, group: 'Склад' },
+  { key: 'inspections', label: 'Проверка', icon: ShieldCheck, group: 'Склад' },
   { key: 'issues', label: 'Выдача со склада', icon: Truck, group: 'Склад' },
   { key: 'purchase-requests', label: 'Заявки на закуп', icon: FileText, group: 'Закупки' },
   { key: 'contractor-portal', label: 'Кабинет подрядчика', icon: Users, group: 'Сервис' },
@@ -93,6 +96,7 @@ function App() {
       case 'requirements': return <Requirements />;
       case 'corrections': return <Corrections />;
       case 'receipts': return <WarehouseReceipts />;
+      case 'inspections': return <WarehouseInspections />;
       case 'purchase-requests': return <PurchaseRequests initialMaterialId={purchaseMaterialId} onInitialMaterialHandled={() => setPurchaseMaterialId(null)} />;
       case 'issues': return <WarehouseIssues />;
       case 'contractors': return <Contractors />;
