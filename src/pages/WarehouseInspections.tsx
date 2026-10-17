@@ -208,14 +208,19 @@ export default function WarehouseInspections() {
       id: item.id,
       material_id: item.material_id,
       transferred_quantity: item.transferred_quantity,
-      inspected_quantity: String(item.inspected_quantity),
+      inspected_quantity: String(item.defective_quantity > 0 ? Math.max(0, item.transferred_quantity - item.defective_quantity) : item.inspected_quantity),
       defective_quantity: String(item.defective_quantity),
     })));
   };
 
   const updateResultRow = (index: number, field: 'inspected_quantity' | 'defective_quantity', value: string) => {
     const next = [...resultRows];
-    next[index] = { ...next[index], [field]: value };
+    const row = next[index];
+    const entered = parseFloat(value) || 0;
+    const remaining = Math.max(0, row.transferred_quantity - entered);
+    next[index] = field === 'defective_quantity'
+      ? { ...row, defective_quantity: value, inspected_quantity: String(remaining) }
+      : { ...row, inspected_quantity: value, defective_quantity: String(remaining) };
     setResultRows(next);
   };
 
@@ -224,7 +229,7 @@ export default function WarehouseInspections() {
     if (resultRows.some((row) => {
       const inspected = parseFloat(row.inspected_quantity) || 0;
       const defective = parseFloat(row.defective_quantity) || 0;
-      return inspected > row.transferred_quantity || defective > inspected;
+      return inspected < 0 || defective < 0 || Math.abs(inspected + defective - row.transferred_quantity) > 0.01;
     })) return;
     for (const row of resultRows) {
       await supabase.from('warehouse_inspection_items').update({
@@ -366,6 +371,11 @@ export default function WarehouseInspections() {
         <div className="space-y-4">
           <p className="text-sm text-slate-500">Укажите результаты по переданным материалам. Проверенное количество не может быть больше переданного, а брак — больше проверенного.</p>
           <div className="space-y-2">
+            <div className="grid grid-cols-[minmax(0,1fr)_8rem_8rem] gap-2 text-xs font-medium text-slate-500">
+              <span />
+              <span className="text-center">Проверено</span>
+              <span className="text-center">Брак</span>
+            </div>
             {resultRows.map((row, index) => (
               <div key={row.id} className="grid grid-cols-[minmax(0,1fr)_8rem_8rem] gap-2 items-end">
                 <div><p className="text-sm font-medium text-slate-700 truncate">{materialMap.get(row.material_id)?.name || 'Материал'}</p><p className="text-xs text-slate-400">Передано: {row.transferred_quantity} {materialMap.get(row.material_id)?.unit || ''}</p></div>
