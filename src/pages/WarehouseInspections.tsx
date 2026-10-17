@@ -16,6 +16,7 @@ import {
   EmptyState,
 } from '@/components/ui';
 import { exportToExcel } from '@/lib/export';
+import { getWarehouseInboundByMaterial } from '@/lib/warehouse';
 import {
   INSPECTION_STATUS_COLORS,
   INSPECTION_STATUS_LABELS,
@@ -85,13 +86,10 @@ export default function WarehouseInspections() {
     return map;
   }, [data.inspectionItems, inspectionMap]);
 
-  const receivedByMaterial = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const receipt of data.receipts) {
-      map.set(receipt.material_id, (map.get(receipt.material_id) || 0) + receipt.quantity);
-    }
-    return map;
-  }, [data.receipts]);
+  const receivedByMaterial = useMemo(
+    () => getWarehouseInboundByMaterial(data.receipts, data.purchaseRequests),
+    [data.receipts, data.purchaseRequests],
+  );
 
   const stockAvailable = useMemo(() => {
     const map = new Map<string, number>();

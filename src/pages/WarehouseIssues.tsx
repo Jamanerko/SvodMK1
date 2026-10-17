@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { useData } from '@/lib/useData';
 import { Card, CardHeader, Button, Input, Select, SearchSelect, Modal, Badge, PageContainer, LoadingSpinner, EmptyState } from '@/components/ui';
 import { exportToExcel } from '@/lib/export';
+import { getWarehouseInboundByMaterial } from '@/lib/warehouse';
 import { ISSUE_STATUS_LABELS, ISSUE_STATUS_COLORS, type WarehouseIssueStatus } from '@/lib/types';
 
 export default function WarehouseIssues() {
@@ -116,14 +117,11 @@ export default function WarehouseIssues() {
     return map;
   }, [data.issueItems, data.issues]);
 
-  // Received by material
-  const receivedByMaterial = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const r of data.receipts) {
-      map.set(r.material_id, (map.get(r.material_id) || 0) + r.quantity);
-    }
-    return map;
-  }, [data.receipts]);
+  // Received by material, including delivered purchase requests
+  const receivedByMaterial = useMemo(
+    () => getWarehouseInboundByMaterial(data.receipts, data.purchaseRequests),
+    [data.receipts, data.purchaseRequests],
+  );
 
   // Required by material per object (for the issue breakdown)
   const requiredByMaterial = useMemo(() => {

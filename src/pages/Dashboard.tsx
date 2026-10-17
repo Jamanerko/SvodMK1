@@ -4,6 +4,7 @@ import { useData } from '@/lib/useData';
 import { Card, CardHeader, LoadingSpinner, Badge, PageContainer, Modal } from '@/components/ui';
 import { OBJECT_TYPE_LABELS, PR_STATUS_LABELS, PR_STATUS_COLORS, ISSUE_STATUS_LABELS, ISSUE_STATUS_COLORS } from '@/lib/types';
 import { exportToExcel, exportToPDF } from '@/lib/export';
+import { getWarehouseInboundByMaterial } from '@/lib/warehouse';
 
 export default function Dashboard({ onOpenPurchaseRequest }: { onOpenPurchaseRequest?: (materialId: string) => void }) {
   const { data, loading } = useData();
@@ -28,10 +29,7 @@ export default function Dashboard({ onOpenPurchaseRequest }: { onOpenPurchaseReq
       }
     }
 
-    const receivedByMaterial = new Map<string, number>();
-    for (const r of data.receipts) {
-      receivedByMaterial.set(r.material_id, (receivedByMaterial.get(r.material_id) || 0) + r.quantity);
-    }
+    const receivedByMaterial = getWarehouseInboundByMaterial(data.receipts, data.purchaseRequests);
 
     const issuedByMaterial = new Map<string, number>();
     const confirmedIssueIds = new Set(data.issues.filter((i) => i.status === 'confirmed').map((i) => i.id));
