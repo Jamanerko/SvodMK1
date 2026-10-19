@@ -177,6 +177,23 @@ export default function WarehouseIssues() {
     );
   }, [stockMaterials, stockSearch]);
 
+  const getIssueMaterialOptions = (selectedId: string): Array<{ value: string; label: string }> => {
+    const options = stockMaterials.map(({ material, available }) => ({
+      value: material.id,
+      label: `${material.name}${material.article ? ` (${material.article})` : ''} — доступно: ${available.toLocaleString('ru-RU', { maximumFractionDigits: 3 })} ${material.unit}`,
+    }));
+    if (selectedId && !options.some((option) => option.value === selectedId)) {
+      const material = materialMap.get(selectedId);
+      if (material) {
+        options.push({
+          value: material.id,
+          label: `${material.name}${material.article ? ` (${material.article})` : ''} — нет остатка`,
+        });
+      }
+    }
+    return options;
+  };
+
   const enriched = useMemo(() => {
     return data.issues.map((i) => ({ ...i, contractor: contractorMap.get(i.contractor_id) }));
   }, [data.issues, contractorMap]);
@@ -482,8 +499,8 @@ export default function WarehouseIssues() {
                       <SearchSelect
                         value={item.material_id}
                         onChange={(v) => { const c = [...items]; c[idx].material_id = v; setItems(c); }}
-                        options={data.materials.map((m) => ({ value: m.id, label: `${m.name}${m.article ? ' (' + m.article + ')' : ''}` }))}
-                        placeholder="Материал..."
+                        options={getIssueMaterialOptions(item.material_id)}
+                        placeholder="Материал со склада..."
                       />
                     </div>
                     <div className="col-span-4">
