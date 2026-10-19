@@ -7,6 +7,7 @@ import { exportToExcel } from '@/lib/export';
 
 interface ReceiptRow {
   material_id: string;
+  drum_number: string;
   quantity: string;
 }
 
@@ -14,7 +15,7 @@ export default function WarehouseReceipts() {
   const { data, loading, refresh } = useData();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
-  const [form, setForm] = useState({ receipt_date: '', supplier: '', document_url: '', notes: '', drum_number: '' });
+  const [form, setForm] = useState({ receipt_date: '', supplier: '', document_url: '', notes: '' });
   const [rows, setRows] = useState<ReceiptRow[]>([]);
   const [search, setSearch] = useState('');
   const [filterMaterial, setFilterMaterial] = useState('');
@@ -50,7 +51,7 @@ export default function WarehouseReceipts() {
       if (filterMaterial && r.material_id !== filterMaterial) return false;
       if (search) {
         const s = search.toLowerCase();
-        return (r.material?.name || '').toLowerCase().includes(s) || (r.supplier || '').toLowerCase().includes(s) || (r.notes || '').toLowerCase().includes(s);
+        return (r.material?.name || '').toLowerCase().includes(s) || (r.supplier || '').toLowerCase().includes(s) || (r.drum_number || '').toLowerCase().includes(s) || (r.notes || '').toLowerCase().includes(s);
       }
       return true;
     });
@@ -58,8 +59,8 @@ export default function WarehouseReceipts() {
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ receipt_date: new Date().toISOString().slice(0, 10), supplier: '', document_url: '', notes: '', drum_number: '' });
-    setRows([{ material_id: '', quantity: '' }]);
+    setForm({ receipt_date: new Date().toISOString().slice(0, 10), supplier: '', document_url: '', notes: '' });
+    setRows([{ material_id: '', drum_number: '', quantity: '' }]);
     setMaterialSearch('');
     setModalOpen(true);
   };
@@ -73,9 +74,8 @@ export default function WarehouseReceipts() {
       supplier: r.supplier || '',
       document_url: r.document_url || '',
       notes: r.notes || '',
-      drum_number: r.drum_number || '',
     });
-    setRows([{ material_id: r.material_id, quantity: String(r.quantity) }]);
+    setRows([{ material_id: r.material_id, drum_number: r.drum_number || '', quantity: String(r.quantity) }]);
     setModalOpen(true);
   };
 
@@ -90,7 +90,7 @@ export default function WarehouseReceipts() {
         supplier: form.supplier || null,
         document_url: form.document_url || null,
         notes: form.notes || null,
-        drum_number: form.drum_number || null,
+        drum_number: row.drum_number || null,
       }).eq('id', editing);
     } else {
       const validRows = rows.filter((r) => r.material_id && r.quantity);
@@ -102,7 +102,7 @@ export default function WarehouseReceipts() {
         supplier: form.supplier || null,
         document_url: form.document_url || null,
         notes: form.notes || null,
-        drum_number: form.drum_number || null,
+        drum_number: r.drum_number || null,
       }));
       await supabase.from('warehouse_receipts').insert(inserts);
     }
@@ -116,8 +116,19 @@ export default function WarehouseReceipts() {
     await refresh();
   };
 
-  const addRow = () => setRows([...rows, { material_id: '', quantity: '' }]);
+  const addRow = () => setRows([...rows, { material_id: rows[0]?.material_id || '', drum_number: '', quantity: '' }]);
   const removeRow = (idx: number) => setRows(rows.filter((_, i) => i !== idx));
+
+  const totalsByMaterial = useMemo(() => {
+    const totals = new Map<string, number>();
+    for (const row of rows) {
+      if (row.material_id) totals.set(row.material_id, (totals.get(row.material_id) || 0) + (parseFloat(row.quantity) || 0));
+    }
+    return [...totals.entries()].map(([materialId, quantity]) => ({
+      material: materialMap.get(materialId),
+      quantity,
+    }));
+  }, [rows, materialMap]);
 
   const updateRow = (idx: number, field: keyof ReceiptRow, value: string) => {
     const copy = [...rows];
@@ -258,10 +269,6 @@ export default function WarehouseReceipts() {
             </div>
           </div>
           <div>
-            <label className="text-sm font-medium text-slate-700 mb-1 block">Номер барабана (для кабельной продукции)</label>
-            <Input value={form.drum_number} onChange={(v) => setForm({ ...form, drum_number: v })} placeholder="Напр. 142, А-07, Б-12..." />
-          </div>
-          <div>
             <label className="text-sm font-medium text-slate-700 mb-1 block">Ссылка на документ (АПП/накладная)</label>
             <Input value={form.document_url} onChange={(v) => setForm({ ...form, document_url: v })} placeholder="https://..." />
           </div>
@@ -273,7 +280,7 @@ export default function WarehouseReceipts() {
           {/* Materials */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className="text-sm font-medium text-slate-700">Материалы в накладной</label>
+              <label className="text-sm font-medium text-slate-700">Кабель и барабаны в накладной</label>
               {!editing && (
                 <button onClick={addRow} className="text-xs text-blue-600 hover:underline flex items-center gap-1">
                   <Plus className="w-3.5 h-3.5" /> Добавить позицию
@@ -281,26 +288,33 @@ export default function WarehouseReceipts() {
               )}
             </div>
             {editing ? (
-              <div className="space-y-2">
-                <div className="flex gap-2">
-                  <Select
-                    value={rows[0]?.material_id || ''}
-                    onChange={(v) => updateRow(0, 'material_id', v)}
-                    options={data.materials.map((m) => ({ value: m.id, label: `${m.name}${m.article ? ' (' + m.article + ')' : ''}` }))}
-                    placeholder="Материал..."
-                    className="flex-1"
-                  />
-                  <Input
-                    type="number"
-                    value={rows[0]?.quantity || ''}
-                    onChange={(v) => updateRow(0, 'quantity', v)}
-                    placeholder="Кол-во"
-                    className="w-28"
-                  />
-                </div>
+              <div className="grid grid-cols-[minmax(0,1fr)_9rem_7rem] gap-2">
+                <Select
+                  value={rows[0]?.material_id || ''}
+                  onChange={(v) => updateRow(0, 'material_id', v)}
+                  options={data.materials.map((m) => ({ value: m.id, label: `${m.name}${m.article ? ' (' + m.article + ')' : ''}` }))}
+                  placeholder="Материал..."
+                />
+                <Input
+                  value={rows[0]?.drum_number || ''}
+                  onChange={(v) => updateRow(0, 'drum_number', v)}
+                  placeholder="№ барабана"
+                />
+                <Input
+                  type="number"
+                  value={rows[0]?.quantity || ''}
+                  onChange={(v) => updateRow(0, 'quantity', v)}
+                  placeholder="Километраж"
+                />
               </div>
             ) : (
               <>
+                <div className="grid grid-cols-[minmax(0,1fr)_9rem_7rem_auto] gap-2 mb-2 text-xs text-slate-500">
+                  <span>Кабель / материал</span>
+                  <span>Номер барабана</span>
+                  <span>Километраж</span>
+                  <span />
+                </div>
                 <input
                   value={materialSearch}
                   onChange={(e) => setMaterialSearch(e.target.value)}
@@ -309,11 +323,11 @@ export default function WarehouseReceipts() {
                 />
                 <div className="space-y-2 max-h-64 overflow-y-auto">
                   {rows.map((row, idx) => (
-                    <div key={idx} className="flex gap-2 items-center">
+                    <div key={idx} className="grid grid-cols-[minmax(0,1fr)_9rem_7rem_auto] gap-2 items-center">
                       <select
                         value={row.material_id}
                         onChange={(e) => updateRow(idx, 'material_id', e.target.value)}
-                        className="flex-1 px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                       >
                         <option value="">— выбрать материал —</option>
                         {filteredMaterials.map((m) => (
@@ -323,11 +337,19 @@ export default function WarehouseReceipts() {
                         ))}
                       </select>
                       <input
+                        value={row.drum_number}
+                        onChange={(e) => updateRow(idx, 'drum_number', e.target.value)}
+                        placeholder="№ барабана"
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <input
                         type="number"
+                        min="0"
+                        step="any"
                         value={row.quantity}
                         onChange={(e) => updateRow(idx, 'quantity', e.target.value)}
-                        placeholder="Кол-во"
-                        className="w-24 px-3 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Километраж"
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
                       <button onClick={() => removeRow(idx)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg">
                         <X className="w-4 h-4" />
@@ -336,6 +358,17 @@ export default function WarehouseReceipts() {
                   ))}
                 </div>
               </>
+            )}
+            {totalsByMaterial.length > 0 && (
+              <div className="mt-3 rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-800">
+                <div className="font-medium mb-1">Итого по кабелю</div>
+                {totalsByMaterial.map(({ material, quantity }) => (
+                  <div key={material?.id} className="flex items-center justify-between gap-3">
+                    <span className="truncate">{material?.name || 'Материал'}</span>
+                    <span className="font-semibold tabular-nums whitespace-nowrap">{quantity} {material?.unit || ''}</span>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
 
