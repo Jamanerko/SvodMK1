@@ -753,9 +753,6 @@ export default function WarehouseIssues() {
                                 № {d.drumNumber} — доступно {formatQuantity(d.available)} {unit}
                               </option>
                             ))}
-                            {item.drum_number && !availableDrums.find((d) => d.drumNumber === item.drum_number) && (
-                              <option value={item.drum_number}>№ {item.drum_number} (вручную)</option>
-                            )}
                           </select>
                         </div>
                         <div className="w-24 shrink-0">
