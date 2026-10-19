@@ -187,14 +187,19 @@ export default function WarehouseIssues() {
 
   const issuedByDrum = useMemo(() => {
     const map = new Map<string, number>();
-    const validIssueIds = new Set(data.issues.filter((issue) => issue.status !== 'cancelled').map((issue) => issue.id));
+    // Exclude the issue currently being edited so its own drums remain selectable
+    const validIssueIds = new Set(
+      data.issues
+        .filter((issue) => issue.status !== 'cancelled' && issue.id !== editing)
+        .map((issue) => issue.id),
+    );
     for (const item of data.issueItems) {
       if (!item.drum_number || !validIssueIds.has(item.warehouse_issue_id)) continue;
       const key = `${item.material_id}:${item.drum_number}`;
       map.set(key, (map.get(key) || 0) + item.quantity);
     }
     return map;
-  }, [data.issues, data.issueItems]);
+  }, [data.issues, data.issueItems, editing]);
 
   const getRequirement = (materialId: string, objectId: string): number =>
     requirementByMaterialAndObject.get(`${materialId}:${objectId}`) || 0;
@@ -292,21 +297,23 @@ export default function WarehouseIssues() {
   };
 
   const getAvailableDrums = (materialId: string, excludeIdx?: number): Array<{ drumNumber: string; available: number }> => {
-    // Subtract quantities already assigned in other rows of the current form
+    // Drums already issued in the DB (outside this edit) are fully blocked — a drum goes to one site only
+    const dbIssuedDrums = new Set(
+      Array.from(issuedByDrum.entries())
+        .filter(([key, qty]) => key.startsWith(`${materialId}:`) && qty > 0)
+        .map(([key]) => key.slice(materialId.length + 1)),
+    );
+    // Drums assigned in other rows of the current form
     const inFormIssued = new Map<string, number>();
     for (const [i, it] of items.entries()) {
       if (i === excludeIdx || it.material_id !== materialId || !it.drum_number) continue;
       inFormIssued.set(it.drum_number, (inFormIssued.get(it.drum_number) || 0) + (parseFloat(it.quantity) || 0));
     }
     return data.receipts
-      .filter((r) => r.material_id === materialId && r.drum_number)
+      .filter((r) => r.material_id === materialId && r.drum_number && !dbIssuedDrums.has(r.drum_number!))
       .map((r) => ({
         drumNumber: r.drum_number as string,
-        available: Math.max(0,
-          r.quantity
-          - (issuedByDrum.get(`${r.material_id}:${r.drum_number}`) || 0)
-          - (inFormIssued.get(r.drum_number!) || 0),
-        ),
+        available: Math.max(0, r.quantity - (inFormIssued.get(r.drum_number!) || 0)),
       }))
       .filter((d) => d.available > 0)
       .sort((a, b) => b.available - a.available);
