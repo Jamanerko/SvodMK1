@@ -7,6 +7,15 @@ import { exportToExcel } from '@/lib/export';
 import { getWarehouseInboundByMaterial } from '@/lib/warehouse';
 import { ISSUE_STATUS_LABELS, ISSUE_STATUS_COLORS, type WarehouseIssueStatus } from '@/lib/types';
 
+interface IssueFormItem {
+  material_id: string;
+  object_id: string;
+  quantity: string;
+  drum_number: string;
+}
+
+const formatQuantity = (quantity: number) => quantity.toLocaleString('ru-RU', { maximumFractionDigits: 3 });
+
 export default function WarehouseIssues() {
   const { data, loading, refresh } = useData();
   const [modalOpen, setModalOpen] = useState(false);
@@ -19,7 +28,7 @@ export default function WarehouseIssues() {
     status: 'planned' as WarehouseIssueStatus,
     notes: '',
   });
-  const [items, setItems] = useState<{ material_id: string; object_id: string; quantity: string; drum_number: string }[]>([]);
+  const [items, setItems] = useState<IssueFormItem[]>([]);
   const [search, setSearch] = useState('');
   const [filterContractor, setFilterContractor] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
@@ -134,6 +143,14 @@ export default function WarehouseIssues() {
     return map;
   }, [data.requirements]);
 
+  const requirementByMaterialAndObject = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const requirement of data.requirements) {
+      map.set(`${requirement.material_id}:${requirement.object_id}`, requirement.quantity);
+    }
+    return map;
+  }, [data.requirements]);
+
   const objectIdsByContractor = useMemo(() => {
     const map = new Map<string, Set<string>>();
     for (const relation of data.contractorObjects) {
@@ -155,6 +172,48 @@ export default function WarehouseIssues() {
     }
     return map;
   }, [data.inspections, data.inspectionItems]);
+
+  const issuedByDrum = useMemo(() => {
+    const map = new Map<string, number>();
+    const validIssueIds = new Set(data.issues.filter((issue) => issue.status !== 'cancelled').map((issue) => issue.id));
+    for (const item of data.issueItems) {
+      if (!item.drum_number || !validIssueIds.has(item.warehouse_issue_id)) continue;
+      const key = `${item.material_id}:${item.drum_number}`;
+      map.set(key, (map.get(key) || 0) + item.quantity);
+    }
+    return map;
+  }, [data.issues, data.issueItems]);
+
+  const getRequirement = (materialId: string, objectId: string): number =>
+    requirementByMaterialAndObject.get(`${materialId}:${objectId}`) || 0;
+
+  const getSuggestedDrum = (materialId: string, objectId: string): string => {
+    const requirement = getRequirement(materialId, objectId);
+    if (!requirement) return '';
+    return data.receipts
+      .filter((receipt) => receipt.material_id === materialId && receipt.drum_number)
+      .map((receipt) => ({
+        drumNumber: receipt.drum_number as string,
+        available: receipt.quantity - (issuedByDrum.get(`${receipt.material_id}:${receipt.drum_number}`) || 0),
+      }))
+      .filter((receipt) => receipt.available >= requirement)
+      .sort((a, b) => a.available - b.available)[0]?.drumNumber || '';
+  };
+
+  const updateIssueItem = (index: number, changes: Partial<IssueFormItem>) => {
+    setItems((current) => current.map((item, itemIndex) => {
+      if (itemIndex !== index) return item;
+      const next = { ...item, ...changes };
+      if (changes.material_id !== undefined || changes.object_id !== undefined) {
+        const requirement = getRequirement(next.material_id, next.object_id);
+        next.quantity = requirement ? String(requirement) : '';
+        next.drum_number = next.material_id && next.object_id
+          ? getSuggestedDrum(next.material_id, next.object_id)
+          : '';
+      }
+      return next;
+    }));
+  };
 
   // Materials with available stock (for issue table)
   const stockMaterials = useMemo(() => {
@@ -223,7 +282,12 @@ export default function WarehouseIssues() {
     setEditing(id);
     setForm({ contractor_id: issue.contractor_id, issue_date: issue.issue_date, status: issue.status, notes: issue.notes || '' });
     const issueItems = itemsByIssue.get(id) || [];
-    setItems(issueItems.map((it) => ({ material_id: it.material_id, object_id: it.object_id, quantity: String(it.quantity), drum_number: it.drum_number || '' })));
+    setItems(issueItems.map((it) => ({
+      material_id: it.material_id,
+      object_id: it.object_id,
+      quantity: String(it.quantity),
+      drum_number: it.drum_number || getSuggestedDrum(it.material_id, it.object_id),
+    })));
     setModalOpen(true);
   };
 
@@ -291,7 +355,7 @@ export default function WarehouseIssues() {
           required: requirements.get(object.id) || 0,
           available: 0,
           issueQty: '',
-          drumNumber: '',
+          drumNumber: getSuggestedDrum(issueMaterialId || '', object.id),
         })),
     );
   };
@@ -498,7 +562,7 @@ export default function WarehouseIssues() {
                     <div className="col-span-4">
                       <SearchSelect
                         value={item.material_id}
-                        onChange={(v) => { const c = [...items]; c[idx].material_id = v; setItems(c); }}
+                        onChange={(v) => updateIssueItem(idx, { material_id: v })}
                         options={getIssueMaterialOptions(item.material_id)}
                         placeholder="Материал со склада..."
                       />
@@ -506,28 +570,40 @@ export default function WarehouseIssues() {
                     <div className="col-span-4">
                       <select
                         value={item.object_id}
-                        onChange={(e) => { const c = [...items]; c[idx].object_id = e.target.value; setItems(c); }}
+                        onChange={(e) => updateIssueItem(idx, { object_id: e.target.value })}
                         className="w-full px-2 py-1.5 rounded-lg border border-slate-300 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                       >
-                        <option value="">Объект...</option>
+                        <option value="">Участок / объект...</option>
                         {data.objects.map((o) => (
                           <option key={o.id} value={o.id}>{o.name}</option>
                         ))}
                       </select>
+                      {item.material_id && item.object_id && (
+                        <p className="mt-1 text-[11px] text-slate-500">
+                          Потребность: <span className="font-semibold text-blue-700">{formatQuantity(getRequirement(item.material_id, item.object_id))} {materialMap.get(item.material_id)?.unit || ''}</span>
+                        </p>
+                      )}
                     </div>
                     <div className="col-span-2">
                       <input
                         value={item.drum_number}
-                        onChange={(e) => { const c = [...items]; c[idx].drum_number = e.target.value; setItems(c); }}
+                        onChange={(e) => updateIssueItem(idx, { drum_number: e.target.value })}
                         placeholder="Барабан №"
                         className="w-full px-1.5 py-1.5 rounded-lg border border-slate-300 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
+                      {item.material_id && item.object_id && getSuggestedDrum(item.material_id, item.object_id) && (
+                        <p className="mt-1 text-[11px] text-emerald-600 truncate" title="Можно заменить вручную">
+                          Предложен складом: {getSuggestedDrum(item.material_id, item.object_id)}
+                        </p>
+                      )}
                     </div>
                     <div className="col-span-1">
                       <input
                         type="number"
+                        min="0"
+                        step="any"
                         value={item.quantity}
-                        onChange={(e) => { const c = [...items]; c[idx].quantity = e.target.value; setItems(c); }}
+                        onChange={(e) => updateIssueItem(idx, { quantity: e.target.value })}
                         placeholder="0"
                         className="w-full px-1.5 py-1.5 rounded-lg border border-slate-300 text-xs text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
