@@ -81,17 +81,29 @@ export default function WarehouseReceipts() {
 
   const handleSave = async () => {
     if (editing) {
-      const row = rows[0];
-      if (!row.material_id || !row.quantity) return;
+      const [existingRow, ...newRows] = rows;
+      if (!existingRow?.material_id || !existingRow.quantity) return;
       await supabase.from('warehouse_receipts').update({
-        material_id: row.material_id,
-        quantity: parseFloat(row.quantity),
+        material_id: existingRow.material_id,
+        quantity: parseFloat(existingRow.quantity),
         receipt_date: form.receipt_date,
         supplier: form.supplier || null,
         document_url: form.document_url || null,
         notes: form.notes || null,
-        drum_number: row.drum_number || null,
+        drum_number: existingRow.drum_number || null,
       }).eq('id', editing);
+      const validNewRows = newRows.filter((row) => row.material_id && row.quantity);
+      if (validNewRows.length > 0) {
+        await supabase.from('warehouse_receipts').insert(validNewRows.map((row) => ({
+          material_id: row.material_id,
+          quantity: parseFloat(row.quantity),
+          receipt_date: form.receipt_date,
+          supplier: form.supplier || null,
+          document_url: form.document_url || null,
+          notes: form.notes || null,
+          drum_number: row.drum_number || null,
+        })));
+      }
     } else {
       const validRows = rows.filter((r) => r.material_id && r.quantity);
       if (validRows.length === 0) return;
@@ -281,84 +293,62 @@ export default function WarehouseReceipts() {
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="text-sm font-medium text-slate-700">Кабель и барабаны в накладной</label>
-              {!editing && (
-                <button onClick={addRow} className="text-xs text-blue-600 hover:underline flex items-center gap-1">
-                  <Plus className="w-3.5 h-3.5" /> Добавить позицию
-                </button>
-              )}
+              <button onClick={addRow} className="text-xs text-blue-600 hover:underline flex items-center gap-1">
+                <Plus className="w-3.5 h-3.5" /> Добавить барабан
+              </button>
             </div>
-            {editing ? (
-              <div className="grid grid-cols-[minmax(0,1fr)_9rem_7rem] gap-2">
-                <Select
-                  value={rows[0]?.material_id || ''}
-                  onChange={(v) => updateRow(0, 'material_id', v)}
-                  options={data.materials.map((m) => ({ value: m.id, label: `${m.name}${m.article ? ' (' + m.article + ')' : ''}` }))}
-                  placeholder="Материал..."
-                />
-                <Input
-                  value={rows[0]?.drum_number || ''}
-                  onChange={(v) => updateRow(0, 'drum_number', v)}
-                  placeholder="№ барабана"
-                />
-                <Input
-                  type="number"
-                  value={rows[0]?.quantity || ''}
-                  onChange={(v) => updateRow(0, 'quantity', v)}
-                  placeholder="Километраж"
-                />
-              </div>
-            ) : (
-              <>
-                <div className="grid grid-cols-[minmax(0,1fr)_9rem_7rem_auto] gap-2 mb-2 text-xs text-slate-500">
-                  <span>Кабель / материал</span>
-                  <span>Номер барабана</span>
-                  <span>Километраж</span>
-                  <span />
+            <div className="grid grid-cols-[minmax(0,1fr)_9rem_7rem_auto] gap-2 mb-2 text-xs text-slate-500">
+              <span>Кабель / материал</span>
+              <span>Номер барабана</span>
+              <span>Километраж</span>
+              <span />
+            </div>
+            <input
+              value={materialSearch}
+              onChange={(e) => setMaterialSearch(e.target.value)}
+              placeholder="Поиск материала по названию или артикулу..."
+              className="w-full px-3 py-2 mb-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {rows.map((row, idx) => (
+                <div key={idx} className="grid grid-cols-[minmax(0,1fr)_9rem_7rem_auto] gap-2 items-center">
+                  <select
+                    value={row.material_id}
+                    onChange={(e) => updateRow(idx, 'material_id', e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">— выбрать материал —</option>
+                    {filteredMaterials.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name}{m.article ? ` (${m.article})` : ''} — {m.unit}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    value={row.drum_number}
+                    onChange={(e) => updateRow(idx, 'drum_number', e.target.value)}
+                    placeholder="№ барабана"
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={row.quantity}
+                    onChange={(e) => updateRow(idx, 'quantity', e.target.value)}
+                    placeholder="Километраж"
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <button
+                    onClick={() => removeRow(idx)}
+                    disabled={editing !== null && idx === 0}
+                    className="p-2 text-red-500 hover:bg-red-50 rounded-lg disabled:opacity-30 disabled:cursor-not-allowed"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
                 </div>
-                <input
-                  value={materialSearch}
-                  onChange={(e) => setMaterialSearch(e.target.value)}
-                  placeholder="Поиск материала по названию или артикулу..."
-                  className="w-full px-3 py-2 mb-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <div className="space-y-2 max-h-64 overflow-y-auto">
-                  {rows.map((row, idx) => (
-                    <div key={idx} className="grid grid-cols-[minmax(0,1fr)_9rem_7rem_auto] gap-2 items-center">
-                      <select
-                        value={row.material_id}
-                        onChange={(e) => updateRow(idx, 'material_id', e.target.value)}
-                        className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value="">— выбрать материал —</option>
-                        {filteredMaterials.map((m) => (
-                          <option key={m.id} value={m.id}>
-                            {m.name}{m.article ? ` (${m.article})` : ''} — {m.unit}
-                          </option>
-                        ))}
-                      </select>
-                      <input
-                        value={row.drum_number}
-                        onChange={(e) => updateRow(idx, 'drum_number', e.target.value)}
-                        placeholder="№ барабана"
-                        className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                      <input
-                        type="number"
-                        min="0"
-                        step="any"
-                        value={row.quantity}
-                        onChange={(e) => updateRow(idx, 'quantity', e.target.value)}
-                        placeholder="Километраж"
-                        className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                      <button onClick={() => removeRow(idx)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg">
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
+              ))}
+            </div>
             {totalsByMaterial.length > 0 && (
               <div className="mt-3 rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-800">
                 <div className="font-medium mb-1">Итого по кабелю</div>
