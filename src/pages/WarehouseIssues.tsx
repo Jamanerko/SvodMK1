@@ -126,6 +126,18 @@ export default function WarehouseIssues() {
     return map;
   }, [data.issueItems, data.issues]);
 
+  // Non-cancelled issue items grouped by material+object key
+  const issuedByMaterialAndObject = useMemo(() => {
+    const map = new Map<string, number>();
+    const validIssueIds = new Set(data.issues.filter((i) => i.status !== 'cancelled').map((i) => i.id));
+    for (const item of data.issueItems) {
+      if (!validIssueIds.has(item.warehouse_issue_id)) continue;
+      const key = `${item.material_id}:${item.object_id}`;
+      map.set(key, (map.get(key) || 0) + item.quantity);
+    }
+    return map;
+  }, [data.issueItems, data.issues]);
+
   // Received by material, including delivered purchase requests
   const receivedByMaterial = useMemo(
     () => getWarehouseInboundByMaterial(data.receipts, data.purchaseRequests),
@@ -186,6 +198,37 @@ export default function WarehouseIssues() {
 
   const getRequirement = (materialId: string, objectId: string): number =>
     requirementByMaterialAndObject.get(`${materialId}:${objectId}`) || 0;
+
+  const getIssuedForObject = (materialId: string, objectId: string): number =>
+    issuedByMaterialAndObject.get(`${materialId}:${objectId}`) || 0;
+
+  interface ObjectOption { id: string; label: string; remaining: number; closed: boolean; }
+
+  const getContractorObjectOptions = (contractorId: string, materialId: string): ObjectOption[] => {
+    const allowedIds = objectIdsByContractor.get(contractorId);
+    const objects = allowedIds ? data.objects.filter((o) => allowedIds.has(o.id)) : data.objects;
+    const unit = materialMap.get(materialId)?.unit || '';
+    return objects.map((o) => {
+      const req = materialId ? getRequirement(materialId, o.id) : 0;
+      const issued = materialId ? getIssuedForObject(materialId, o.id) : 0;
+      const remaining = Math.max(0, req - issued);
+      const closed = req > 0 && remaining <= 0;
+      let label = o.name;
+      if (materialId && req > 0) {
+        if (closed) {
+          label = `${o.name} — закрыто (выдано ${issued.toLocaleString('ru-RU', { maximumFractionDigits: 3 })} ${unit})`;
+        } else if (issued > 0) {
+          label = `${o.name} — остаток: ${remaining.toLocaleString('ru-RU', { maximumFractionDigits: 3 })} ${unit}`;
+        } else {
+          label = `${o.name} — нужно: ${req.toLocaleString('ru-RU', { maximumFractionDigits: 3 })} ${unit}`;
+        }
+      }
+      return { id: o.id, label, remaining, closed };
+    }).sort((a, b) => {
+      if (a.closed !== b.closed) return a.closed ? 1 : -1;
+      return 0;
+    });
+  };
 
   const getSuggestedDrum = (materialId: string, objectId: string, excludeIdx?: number): string => {
     const requirement = getRequirement(materialId, objectId);
@@ -611,16 +654,24 @@ export default function WarehouseIssues() {
                           </div>
                           <div>
                             <p className="text-[10px] text-slate-400 mb-1 font-medium uppercase tracking-wide">Участок / объект</p>
-                            <select
-                              value={item.object_id}
-                              onChange={(e) => updateIssueItem(idx, { object_id: e.target.value })}
-                              className="w-full px-2 py-1.5 rounded-lg border border-slate-300 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            >
-                              <option value="">Выбрать...</option>
-                              {data.objects.map((o) => (
-                                <option key={o.id} value={o.id}>{o.name}</option>
-                              ))}
-                            </select>
+                            {(() => {
+                              const opts = getContractorObjectOptions(form.contractor_id, item.material_id);
+                              const noContractor = !form.contractor_id;
+                              return (
+                                <select
+                                  value={item.object_id}
+                                  onChange={(e) => updateIssueItem(idx, { object_id: e.target.value })}
+                                  className="w-full px-2 py-1.5 rounded-lg border border-slate-300 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                >
+                                  <option value="">{noContractor ? 'Сначала выберите подрядчика...' : 'Выбрать участок...'}</option>
+                                  {opts.map((o) => (
+                                    <option key={o.id} value={o.id} style={{ color: o.closed ? '#94a3b8' : undefined }}>
+                                      {o.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              );
+                            })()}
                           </div>
                         </div>
                       )}
