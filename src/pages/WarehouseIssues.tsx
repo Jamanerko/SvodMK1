@@ -253,6 +253,28 @@ export default function WarehouseIssues() {
     return options;
   };
 
+  const getAvailableDrums = (materialId: string): Array<{ drumNumber: string; available: number }> => {
+    return data.receipts
+      .filter((r) => r.material_id === materialId && r.drum_number)
+      .map((r) => ({
+        drumNumber: r.drum_number as string,
+        available: Math.max(0, r.quantity - (issuedByDrum.get(`${r.material_id}:${r.drum_number}`) || 0)),
+      }))
+      .filter((d) => d.available > 0)
+      .sort((a, b) => b.available - a.available);
+  };
+
+  const getObjectTotalAssigned = (materialId: string, objectId: string): number => {
+    if (!materialId || !objectId) return 0;
+    return items
+      .filter((it) => it.material_id === materialId && it.object_id === objectId)
+      .reduce((sum, it) => sum + (parseFloat(it.quantity) || 0), 0);
+  };
+
+  const addDrumRowForObject = (materialId: string, objectId: string) => {
+    setItems((current) => [...current, { material_id: materialId, object_id: objectId, quantity: '', drum_number: '' }]);
+  };
+
   const enriched = useMemo(() => {
     return data.issues.map((i) => ({ ...i, contractor: contractorMap.get(i.contractor_id) }));
   }, [data.issues, contractorMap]);
@@ -545,7 +567,7 @@ export default function WarehouseIssues() {
             </div>
           </div>
 
-          {/* Items — compact table layout */}
+          {/* Items — drum-picker table layout */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="text-sm font-medium text-slate-700">Материалы по объектам</label>
@@ -556,65 +578,119 @@ export default function WarehouseIssues() {
             {items.length === 0 ? (
               <p className="text-xs text-slate-400 py-2">Нет позиций</p>
             ) : (
-              <div className="space-y-2">
-                {items.map((item, idx) => (
-                  <div key={idx} className="grid grid-cols-12 gap-2 items-center">
-                    <div className="col-span-4">
-                      <SearchSelect
-                        value={item.material_id}
-                        onChange={(v) => updateIssueItem(idx, { material_id: v })}
-                        options={getIssueMaterialOptions(item.material_id)}
-                        placeholder="Материал со склада..."
-                      />
-                    </div>
-                    <div className="col-span-4">
-                      <select
-                        value={item.object_id}
-                        onChange={(e) => updateIssueItem(idx, { object_id: e.target.value })}
-                        className="w-full px-2 py-1.5 rounded-lg border border-slate-300 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value="">Участок / объект...</option>
-                        {data.objects.map((o) => (
-                          <option key={o.id} value={o.id}>{o.name}</option>
-                        ))}
-                      </select>
-                      {item.material_id && item.object_id && (
-                        <p className="mt-1 text-[11px] text-slate-500">
-                          Потребность: <span className="font-semibold text-blue-700">{formatQuantity(getRequirement(item.material_id, item.object_id))} {materialMap.get(item.material_id)?.unit || ''}</span>
-                        </p>
+              <div className="space-y-3">
+                {items.map((item, idx) => {
+                  const unit = materialMap.get(item.material_id)?.unit || '';
+                  const requirement = item.material_id && item.object_id ? getRequirement(item.material_id, item.object_id) : 0;
+                  const totalAssigned = item.material_id && item.object_id ? getObjectTotalAssigned(item.material_id, item.object_id) : 0;
+                  const covered = requirement > 0 ? Math.min(1, totalAssigned / requirement) : 0;
+                  const isOverfilled = totalAssigned > requirement && requirement > 0;
+                  const availableDrums = item.material_id ? getAvailableDrums(item.material_id) : [];
+                  const isFirstForGroup = idx === 0 || items[idx - 1].material_id !== item.material_id || items[idx - 1].object_id !== item.object_id;
+                  const isLastForGroup = idx === items.length - 1 || items[idx + 1].material_id !== item.material_id || items[idx + 1].object_id !== item.object_id;
+                  const groupRowCount = items.filter((it) => it.material_id === item.material_id && it.object_id === item.object_id).length;
+                  const drumIdx = items.slice(0, idx).filter((it) => it.material_id === item.material_id && it.object_id === item.object_id).length;
+                  return (
+                    <div key={idx} className={`rounded-xl border ${isFirstForGroup ? 'pt-3' : 'pt-2'} pb-2 px-3 ${isOverfilled ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-slate-50'}`}>
+                      {/* Material + object selectors — only on first row in group */}
+                      {isFirstForGroup && (
+                        <div className="grid grid-cols-2 gap-2 mb-2">
+                          <div>
+                            <p className="text-[10px] text-slate-400 mb-1 font-medium uppercase tracking-wide">Материал</p>
+                            <SearchSelect
+                              value={item.material_id}
+                              onChange={(v) => updateIssueItem(idx, { material_id: v })}
+                              options={getIssueMaterialOptions(item.material_id)}
+                              placeholder="Материал со склада..."
+                            />
+                          </div>
+                          <div>
+                            <p className="text-[10px] text-slate-400 mb-1 font-medium uppercase tracking-wide">Участок / объект</p>
+                            <select
+                              value={item.object_id}
+                              onChange={(e) => updateIssueItem(idx, { object_id: e.target.value })}
+                              className="w-full px-2 py-1.5 rounded-lg border border-slate-300 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                              <option value="">Выбрать...</option>
+                              {data.objects.map((o) => (
+                                <option key={o.id} value={o.id}>{o.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
                       )}
-                    </div>
-                    <div className="col-span-2">
-                      <input
-                        value={item.drum_number}
-                        onChange={(e) => updateIssueItem(idx, { drum_number: e.target.value })}
-                        placeholder="Барабан №"
-                        className="w-full px-1.5 py-1.5 rounded-lg border border-slate-300 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                      {item.material_id && item.object_id && getSuggestedDrum(item.material_id, item.object_id) && (
-                        <p className="mt-1 text-[11px] text-emerald-600 truncate" title="Можно заменить вручную">
-                          Предложен складом: {getSuggestedDrum(item.material_id, item.object_id)}
-                        </p>
+                      {/* Requirement progress bar */}
+                      {item.material_id && item.object_id && requirement > 0 && isFirstForGroup && (
+                        <div className="mb-2">
+                          <div className="flex items-center justify-between text-[11px] mb-0.5">
+                            <span className="text-slate-500">Потребность: <span className="font-semibold text-blue-700">{formatQuantity(requirement)} {unit}</span></span>
+                            <span className={totalAssigned >= requirement ? 'text-emerald-600 font-semibold' : isOverfilled ? 'text-amber-600 font-semibold' : 'text-slate-600'}>
+                              Подобрано: {formatQuantity(totalAssigned)} / {formatQuantity(requirement)} {unit}
+                              {totalAssigned >= requirement && ' ✓'}
+                            </span>
+                          </div>
+                          <div className="h-1.5 rounded-full bg-slate-200 overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all ${isOverfilled ? 'bg-amber-400' : covered >= 1 ? 'bg-emerald-500' : 'bg-blue-500'}`}
+                              style={{ width: `${Math.min(100, covered * 100)}%` }}
+                            />
+                          </div>
+                        </div>
                       )}
+                      {/* Drum row */}
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1">
+                          <p className="text-[10px] text-slate-400 mb-0.5">Барабан {groupRowCount > 1 ? `#${drumIdx + 1}` : ''}</p>
+                          <select
+                            value={item.drum_number}
+                            onChange={(e) => updateIssueItem(idx, { drum_number: e.target.value })}
+                            className="w-full px-2 py-1.5 rounded-lg border border-slate-300 text-xs font-mono bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          >
+                            <option value="">— выбрать барабан —</option>
+                            {availableDrums.map((d) => (
+                              <option key={d.drumNumber} value={d.drumNumber}>
+                                № {d.drumNumber} — доступно {formatQuantity(d.available)} {unit}
+                              </option>
+                            ))}
+                            {item.drum_number && !availableDrums.find((d) => d.drumNumber === item.drum_number) && (
+                              <option value={item.drum_number}>№ {item.drum_number} (вручную)</option>
+                            )}
+                          </select>
+                        </div>
+                        <div className="w-24 shrink-0">
+                          <p className="text-[10px] text-slate-400 mb-0.5">Км с барабана</p>
+                          <input
+                            type="number"
+                            min="0"
+                            step="any"
+                            value={item.quantity}
+                            onChange={(e) => updateIssueItem(idx, { quantity: e.target.value })}
+                            placeholder="0"
+                            className="w-full px-2 py-1.5 rounded-lg border border-slate-300 text-xs text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                          {item.drum_number && (() => {
+                            const drum = availableDrums.find((d) => d.drumNumber === item.drum_number);
+                            return drum ? <p className="text-[10px] text-slate-400 mt-0.5 text-right">макс. {formatQuantity(drum.available)}</p> : null;
+                          })()}
+                        </div>
+                        <div className="flex flex-col gap-1 items-center pt-4">
+                          {isLastForGroup && (
+                            <button
+                              onClick={() => addDrumRowForObject(item.material_id, item.object_id)}
+                              title="Добавить ещё барабан на этот участок"
+                              className="p-1 rounded-lg hover:bg-blue-50 text-blue-500 border border-blue-200"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          <button onClick={() => removeItemRow(idx)} className="p-1 text-red-400 hover:bg-red-50 rounded-lg">
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                    <div className="col-span-1">
-                      <input
-                        type="number"
-                        min="0"
-                        step="any"
-                        value={item.quantity}
-                        onChange={(e) => updateIssueItem(idx, { quantity: e.target.value })}
-                        placeholder="0"
-                        className="w-full px-1.5 py-1.5 rounded-lg border border-slate-300 text-xs text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                    <div className="col-span-1 flex justify-center">
-                      <button onClick={() => removeItemRow(idx)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg">
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
