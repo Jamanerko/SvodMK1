@@ -187,17 +187,12 @@ export default function WarehouseIssues() {
   const getRequirement = (materialId: string, objectId: string): number =>
     requirementByMaterialAndObject.get(`${materialId}:${objectId}`) || 0;
 
-  const getSuggestedDrum = (materialId: string, objectId: string): string => {
+  const getSuggestedDrum = (materialId: string, objectId: string, excludeIdx?: number): string => {
     const requirement = getRequirement(materialId, objectId);
-    if (!requirement) return '';
-    return data.receipts
-      .filter((receipt) => receipt.material_id === materialId && receipt.drum_number)
-      .map((receipt) => ({
-        drumNumber: receipt.drum_number as string,
-        available: receipt.quantity - (issuedByDrum.get(`${receipt.material_id}:${receipt.drum_number}`) || 0),
-      }))
-      .filter((receipt) => receipt.available >= requirement)
-      .sort((a, b) => a.available - b.available)[0]?.drumNumber || '';
+    if (!materialId) return '';
+    const drums = getAvailableDrums(materialId, excludeIdx);
+    if (!requirement) return drums[0]?.drumNumber || '';
+    return drums.find((d) => d.available >= requirement)?.drumNumber || drums[0]?.drumNumber || '';
   };
 
   const updateIssueItem = (index: number, changes: Partial<IssueFormItem>) => {
@@ -253,12 +248,22 @@ export default function WarehouseIssues() {
     return options;
   };
 
-  const getAvailableDrums = (materialId: string): Array<{ drumNumber: string; available: number }> => {
+  const getAvailableDrums = (materialId: string, excludeIdx?: number): Array<{ drumNumber: string; available: number }> => {
+    // Subtract quantities already assigned in other rows of the current form
+    const inFormIssued = new Map<string, number>();
+    for (const [i, it] of items.entries()) {
+      if (i === excludeIdx || it.material_id !== materialId || !it.drum_number) continue;
+      inFormIssued.set(it.drum_number, (inFormIssued.get(it.drum_number) || 0) + (parseFloat(it.quantity) || 0));
+    }
     return data.receipts
       .filter((r) => r.material_id === materialId && r.drum_number)
       .map((r) => ({
         drumNumber: r.drum_number as string,
-        available: Math.max(0, r.quantity - (issuedByDrum.get(`${r.material_id}:${r.drum_number}`) || 0)),
+        available: Math.max(0,
+          r.quantity
+          - (issuedByDrum.get(`${r.material_id}:${r.drum_number}`) || 0)
+          - (inFormIssued.get(r.drum_number!) || 0),
+        ),
       }))
       .filter((d) => d.available > 0)
       .sort((a, b) => b.available - a.available);
@@ -585,7 +590,7 @@ export default function WarehouseIssues() {
                   const totalAssigned = item.material_id && item.object_id ? getObjectTotalAssigned(item.material_id, item.object_id) : 0;
                   const covered = requirement > 0 ? Math.min(1, totalAssigned / requirement) : 0;
                   const isOverfilled = totalAssigned > requirement && requirement > 0;
-                  const availableDrums = item.material_id ? getAvailableDrums(item.material_id) : [];
+                  const availableDrums = item.material_id ? getAvailableDrums(item.material_id, idx) : [];
                   const isFirstForGroup = idx === 0 || items[idx - 1].material_id !== item.material_id || items[idx - 1].object_id !== item.object_id;
                   const isLastForGroup = idx === items.length - 1 || items[idx + 1].material_id !== item.material_id || items[idx + 1].object_id !== item.object_id;
                   const groupRowCount = items.filter((it) => it.material_id === item.material_id && it.object_id === item.object_id).length;
