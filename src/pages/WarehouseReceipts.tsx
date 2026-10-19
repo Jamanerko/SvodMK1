@@ -11,6 +11,8 @@ interface ReceiptRow {
   quantity: string;
 }
 
+const formatQuantity = (quantity: number) => quantity.toLocaleString('ru-RU', { maximumFractionDigits: 3 });
+
 export default function WarehouseReceipts() {
   const { data, loading, refresh } = useData();
   const [modalOpen, setModalOpen] = useState(false);
@@ -235,7 +237,7 @@ export default function WarehouseReceipts() {
                     </td>
                     <td className="px-4 py-2.5 text-slate-800 font-medium">{r.material?.name || '—'}</td>
                     <td className="px-4 py-2.5 text-right text-slate-800 font-semibold">
-                      {r.quantity} <span className="text-slate-400 text-xs font-normal">{r.material?.unit}</span>
+                      {formatQuantity(Number(r.quantity))} <span className="text-slate-400 text-xs font-normal">{r.material?.unit}</span>
                     </td>
                     <td className="px-4 py-2.5 text-slate-600 text-xs">{r.supplier || '—'}</td>
                     <td className="px-4 py-2.5 text-slate-600 text-xs font-mono">{r.drum_number || '—'}</td>
@@ -355,7 +357,7 @@ export default function WarehouseReceipts() {
                 {totalsByMaterial.map(({ material, quantity }) => (
                   <div key={material?.id} className="flex items-center justify-between gap-3">
                     <span className="truncate">{material?.name || 'Материал'}</span>
-                    <span className="font-semibold tabular-nums whitespace-nowrap">{quantity} {material?.unit || ''}</span>
+                    <span className="font-semibold tabular-nums whitespace-nowrap">{formatQuantity(quantity)} {material?.unit || ''}</span>
                   </div>
                 ))}
               </div>
