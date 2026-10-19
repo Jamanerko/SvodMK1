@@ -6,6 +6,7 @@ import { useData } from '@/lib/useData';
 import { Card, CardHeader, Button, Input, Select, Modal, Badge, PageContainer, LoadingSpinner, EmptyState } from '@/components/ui';
 import { exportToExcel } from '@/lib/export';
 
+
 const UNIT_OPTIONS = ['шт', 'м', 'км', 'кг', 'т', 'комплект', 'л', 'м²', 'м³', 'упак'];
 
 interface BulkRow {
@@ -30,6 +31,33 @@ export default function Materials() {
   const [bulkRows, setBulkRows] = useState<BulkRow[]>([]);
 
   const categoryMap = useMemo(() => new Map(data.categories.map((c) => [c.id, c])), [data.categories]);
+
+  const stockByMaterial = useMemo(() => {
+    const received = new Map<string, number>();
+    for (const r of data.receipts) {
+      received.set(r.material_id, (received.get(r.material_id) || 0) + r.quantity);
+    }
+    const issued = new Map<string, number>();
+    const validIssueIds = new Set(data.issues.filter((i) => i.status !== 'cancelled').map((i) => i.id));
+    for (const it of data.issueItems) {
+      if (validIssueIds.has(it.warehouse_issue_id))
+        issued.set(it.material_id, (issued.get(it.material_id) || 0) + it.quantity);
+    }
+    const inspMap = new Map(data.inspections.map((i) => [i.id, i]));
+    const blocked = new Map<string, number>();
+    for (const it of data.inspectionItems) {
+      const insp = inspMap.get(it.inspection_id);
+      if (!insp || insp.status === 'cancelled') continue;
+      const b = insp.status === 'in_review' ? it.transferred_quantity : it.defective_quantity;
+      blocked.set(it.material_id, (blocked.get(it.material_id) || 0) + b);
+    }
+    const result = new Map<string, number>();
+    for (const m of data.materials) {
+      const stock = Math.max(0, (received.get(m.id) || 0) - (issued.get(m.id) || 0) - (blocked.get(m.id) || 0));
+      result.set(m.id, stock);
+    }
+    return result;
+  }, [data.receipts, data.issues, data.issueItems, data.inspections, data.inspectionItems, data.materials]);
 
   const filtered = useMemo(() => {
     return data.materials.filter((m) => {
@@ -272,6 +300,7 @@ export default function Materials() {
       'Артикул': m.article || '',
       'Ед. изм.': m.unit,
       'Категория': categoryMap.get(m.category_id || '')?.name || '',
+      'На складе': stockByMaterial.get(m.id) || 0,
     }));
     exportToExcel(rows, 'Материалы', 'materialy');
   };
@@ -334,6 +363,7 @@ export default function Materials() {
                   <th className="text-left px-4 py-2.5 font-medium">Артикул</th>
                   <th className="text-left px-4 py-2.5 font-medium">Ед.</th>
                   <th className="text-left px-4 py-2.5 font-medium">Категория</th>
+                  <th className="text-right px-4 py-2.5 font-medium">На складе</th>
                   <th className="text-right px-4 py-2.5 font-medium">Действия</th>
                 </tr>
               </thead>
@@ -349,6 +379,17 @@ export default function Materials() {
                       ) : (
                         <span className="text-slate-400 text-xs">—</span>
                       )}
+                    </td>
+                    <td className="px-4 py-2.5 text-right">
+                      {(() => {
+                        const stock = stockByMaterial.get(m.id) || 0;
+                        if (stock === 0) return <span className="text-slate-400 text-xs">—</span>;
+                        return (
+                          <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700">
+                            {stock.toLocaleString('ru-RU', { maximumFractionDigits: 3 })} <span className="font-normal text-slate-500">{m.unit}</span>
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td className="px-4 py-2.5 text-right">
                       <div className="flex justify-end gap-1">
