@@ -14,7 +14,7 @@ export default function WarehouseReceipts() {
   const { data, loading, refresh } = useData();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
-  const [form, setForm] = useState({ receipt_date: '', supplier: '', document_url: '', notes: '' });
+  const [form, setForm] = useState({ receipt_date: '', supplier: '', document_url: '', notes: '', drum_number: '' });
   const [rows, setRows] = useState<ReceiptRow[]>([]);
   const [search, setSearch] = useState('');
   const [filterMaterial, setFilterMaterial] = useState('');
@@ -38,6 +38,7 @@ export default function WarehouseReceipts() {
         supplier: 'По заявке на закуп',
         document_url: null,
         notes: 'Автоматически из заявки со статусом «Поставлена»',
+        drum_number: null,
         material: materialMap.get(request.material_id),
         fromPurchaseRequest: true,
       }));
@@ -57,7 +58,7 @@ export default function WarehouseReceipts() {
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ receipt_date: new Date().toISOString().slice(0, 10), supplier: '', document_url: '', notes: '' });
+    setForm({ receipt_date: new Date().toISOString().slice(0, 10), supplier: '', document_url: '', notes: '', drum_number: '' });
     setRows([{ material_id: '', quantity: '' }]);
     setMaterialSearch('');
     setModalOpen(true);
@@ -72,6 +73,7 @@ export default function WarehouseReceipts() {
       supplier: r.supplier || '',
       document_url: r.document_url || '',
       notes: r.notes || '',
+      drum_number: r.drum_number || '',
     });
     setRows([{ material_id: r.material_id, quantity: String(r.quantity) }]);
     setModalOpen(true);
@@ -88,6 +90,7 @@ export default function WarehouseReceipts() {
         supplier: form.supplier || null,
         document_url: form.document_url || null,
         notes: form.notes || null,
+        drum_number: form.drum_number || null,
       }).eq('id', editing);
     } else {
       const validRows = rows.filter((r) => r.material_id && r.quantity);
@@ -99,6 +102,7 @@ export default function WarehouseReceipts() {
         supplier: form.supplier || null,
         document_url: form.document_url || null,
         notes: form.notes || null,
+        drum_number: form.drum_number || null,
       }));
       await supabase.from('warehouse_receipts').insert(inserts);
     }
@@ -130,6 +134,7 @@ export default function WarehouseReceipts() {
       'Количество': r.quantity,
       'Поставщик': r.supplier || '',
       'Документ': r.document_url || '',
+      'Номер барабана': r.drum_number || '',
       'Примечание': r.notes || '',
     }));
     exportToExcel(rows, 'Приход', 'prihod');
@@ -194,6 +199,7 @@ export default function WarehouseReceipts() {
                   <th className="text-left px-4 py-2.5 font-medium">Материал</th>
                   <th className="text-right px-4 py-2.5 font-medium">Кол-во</th>
                   <th className="text-left px-4 py-2.5 font-medium">Поставщик</th>
+                  <th className="text-left px-4 py-2.5 font-medium">Барабан №</th>
                   <th className="text-left px-4 py-2.5 font-medium">Документ</th>
                   <th className="text-right px-4 py-2.5 font-medium">Действия</th>
                 </tr>
@@ -209,6 +215,7 @@ export default function WarehouseReceipts() {
                       {r.quantity} <span className="text-slate-400 text-xs font-normal">{r.material?.unit}</span>
                     </td>
                     <td className="px-4 py-2.5 text-slate-600 text-xs">{r.supplier || '—'}</td>
+                    <td className="px-4 py-2.5 text-slate-600 text-xs font-mono">{r.drum_number || '—'}</td>
                     <td className="px-4 py-2.5">
                       {r.document_url ? (
                         <a href={r.document_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-xs flex items-center gap-1">
@@ -249,6 +256,10 @@ export default function WarehouseReceipts() {
               <label className="text-sm font-medium text-slate-700 mb-1 block">Поставщик</label>
               <Input value={form.supplier} onChange={(v) => setForm({ ...form, supplier: v })} placeholder="Напр. ТОО КабельТрейд" />
             </div>
+          </div>
+          <div>
+            <label className="text-sm font-medium text-slate-700 mb-1 block">Номер барабана (для кабельной продукции)</label>
+            <Input value={form.drum_number} onChange={(v) => setForm({ ...form, drum_number: v })} placeholder="Напр. 142, А-07, Б-12..." />
           </div>
           <div>
             <label className="text-sm font-medium text-slate-700 mb-1 block">Ссылка на документ (АПП/накладная)</label>

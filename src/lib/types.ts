@@ -67,6 +67,7 @@ export interface WarehouseReceipt {
   supplier: string | null;
   document_url: string | null;
   notes: string | null;
+  drum_number: string | null;
   created_at: string;
 }
 
@@ -152,6 +153,7 @@ export interface WarehouseIssueItem {
   material_id: string;
   object_id: string;
   quantity: number;
+  drum_number: string | null;
 }
 
 export interface WarehouseIssueReceipt {

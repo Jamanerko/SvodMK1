@@ -19,7 +19,7 @@ export default function WarehouseIssues() {
     status: 'planned' as WarehouseIssueStatus,
     notes: '',
   });
-  const [items, setItems] = useState<{ material_id: string; object_id: string; quantity: string }[]>([]);
+  const [items, setItems] = useState<{ material_id: string; object_id: string; quantity: string; drum_number: string }[]>([]);
   const [search, setSearch] = useState('');
   const [filterContractor, setFilterContractor] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
@@ -89,7 +89,7 @@ export default function WarehouseIssues() {
   const [issueAdditionalObjects, setIssueAdditionalObjects] = useState('');
   const [issueComment, setIssueComment] = useState('');
   const [issueReceivedBy, setIssueReceivedBy] = useState('');
-  const [issueRows, setIssueRows] = useState<{ object_id: string; required: number; available: number; issueQty: string }[]>([]);
+  const [issueRows, setIssueRows] = useState<{ object_id: string; required: number; available: number; issueQty: string; drumNumber: string }[]>([]);
 
   const contractorMap = useMemo(() => new Map(data.contractors.map((c) => [c.id, c])), [data.contractors]);
   const materialMap = useMemo(() => new Map(data.materials.map((m) => [m.id, m])), [data.materials]);
@@ -206,7 +206,7 @@ export default function WarehouseIssues() {
     setEditing(id);
     setForm({ contractor_id: issue.contractor_id, issue_date: issue.issue_date, status: issue.status, notes: issue.notes || '' });
     const issueItems = itemsByIssue.get(id) || [];
-    setItems(issueItems.map((it) => ({ material_id: it.material_id, object_id: it.object_id, quantity: String(it.quantity) })));
+    setItems(issueItems.map((it) => ({ material_id: it.material_id, object_id: it.object_id, quantity: String(it.quantity), drum_number: it.drum_number || '' })));
     setModalOpen(true);
   };
 
@@ -226,7 +226,7 @@ export default function WarehouseIssues() {
       if (validItems.length > 0) {
         await supabase.from('warehouse_issue_items').insert(
           validItems.map((it) => ({
-            warehouse_issue_id: issueId, material_id: it.material_id, object_id: it.object_id, quantity: parseFloat(it.quantity),
+            warehouse_issue_id: issueId, material_id: it.material_id, object_id: it.object_id, quantity: parseFloat(it.quantity), drum_number: it.drum_number || null,
           })),
         );
       }
@@ -246,7 +246,7 @@ export default function WarehouseIssues() {
     await refresh();
   };
 
-  const addItemRow = () => setItems([...items, { material_id: '', object_id: '', quantity: '' }]);
+  const addItemRow = () => setItems([...items, { material_id: '', object_id: '', quantity: '', drum_number: '' }]);
   const removeItemRow = (idx: number) => setItems(items.filter((_, i) => i !== idx));
 
   // Open per-material issue modal
@@ -274,6 +274,7 @@ export default function WarehouseIssues() {
           required: requirements.get(object.id) || 0,
           available: 0,
           issueQty: '',
+          drumNumber: '',
         })),
     );
   };
@@ -299,6 +300,7 @@ export default function WarehouseIssues() {
           material_id: issueMaterialId,
           object_id: r.object_id,
           quantity: parseFloat(r.issueQty),
+          drum_number: r.drumNumber.trim() || null,
         })),
       );
     }
@@ -476,7 +478,7 @@ export default function WarehouseIssues() {
               <div className="space-y-2">
                 {items.map((item, idx) => (
                   <div key={idx} className="grid grid-cols-12 gap-2 items-center">
-                    <div className="col-span-5">
+                    <div className="col-span-4">
                       <SearchSelect
                         value={item.material_id}
                         onChange={(v) => { const c = [...items]; c[idx].material_id = v; setItems(c); }}
@@ -484,7 +486,7 @@ export default function WarehouseIssues() {
                         placeholder="Материал..."
                       />
                     </div>
-                    <div className="col-span-5">
+                    <div className="col-span-4">
                       <select
                         value={item.object_id}
                         onChange={(e) => { const c = [...items]; c[idx].object_id = e.target.value; setItems(c); }}
@@ -495,6 +497,14 @@ export default function WarehouseIssues() {
                           <option key={o.id} value={o.id}>{o.name}</option>
                         ))}
                       </select>
+                    </div>
+                    <div className="col-span-2">
+                      <input
+                        value={item.drum_number}
+                        onChange={(e) => { const c = [...items]; c[idx].drum_number = e.target.value; setItems(c); }}
+                        placeholder="Барабан №"
+                        className="w-full px-1.5 py-1.5 rounded-lg border border-slate-300 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
                     </div>
                     <div className="col-span-1">
                       <input
@@ -550,6 +560,7 @@ export default function WarehouseIssues() {
                     <th className="text-left px-4 py-2.5 font-medium">Артикул</th>
                     <th className="text-left px-4 py-2.5 font-medium">Объект</th>
                     <th className="text-right px-4 py-2.5 font-medium">Кол-во</th>
+                    <th className="text-left px-4 py-2.5 font-medium">Барабан №</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -562,6 +573,7 @@ export default function WarehouseIssues() {
                         <td className="px-4 py-2.5 text-slate-500 text-xs">{mat?.article || '—'}</td>
                         <td className="px-4 py-2.5 text-slate-600">{obj?.name || '—'}</td>
                         <td className="px-4 py-2.5 text-right text-slate-800 font-semibold">{item.quantity} <span className="text-slate-400 text-xs font-normal">{mat?.unit}</span></td>
+                        <td className="px-4 py-2.5 text-slate-500 text-xs font-mono">{item.drum_number || '—'}</td>
                       </tr>
                     );
                   })}
@@ -853,6 +865,7 @@ export default function WarehouseIssues() {
                 <tr className="bg-slate-50 text-slate-600 text-xs uppercase tracking-wider">
                   <th className="text-left px-3 py-2 font-medium">Объект</th>
                   <th className="text-right px-3 py-2 font-medium">Потребность</th>
+                  <th className="text-right px-3 py-2 font-medium">Барабан №</th>
                   <th className="text-right px-3 py-2 font-medium">Выдать</th>
                 </tr>
               </thead>
@@ -861,6 +874,14 @@ export default function WarehouseIssues() {
                   <tr key={idx}>
                     <td className="px-3 py-2 text-slate-700">{objectMap.get(row.object_id)?.name || '—'}</td>
                     <td className="px-3 py-2 text-right text-slate-600">{row.required}</td>
+                    <td className="px-3 py-2">
+                      <input
+                        value={row.drumNumber}
+                        onChange={(e) => { const c = [...issueRows]; c[idx].drumNumber = e.target.value; setIssueRows(c); }}
+                        placeholder="№ барабана"
+                        className="w-28 px-2 py-1.5 rounded-lg border border-slate-300 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </td>
                     <td className="px-3 py-2 text-right">
                       {(() => {
                         const stockAvailable = Math.max(
