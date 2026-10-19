@@ -138,6 +138,20 @@ export default function WarehouseIssues() {
     return map;
   }, [data.issueItems, data.issues]);
 
+  // Same, but excludes the issue currently being edited (for "previously issued" display)
+  const issuedByMaterialAndObjectExcludingEdit = useMemo(() => {
+    const map = new Map<string, number>();
+    const validIssueIds = new Set(
+      data.issues.filter((i) => i.status !== 'cancelled' && i.id !== editing).map((i) => i.id),
+    );
+    for (const item of data.issueItems) {
+      if (!validIssueIds.has(item.warehouse_issue_id)) continue;
+      const key = `${item.material_id}:${item.object_id}`;
+      map.set(key, (map.get(key) || 0) + item.quantity);
+    }
+    return map;
+  }, [data.issueItems, data.issues, editing]);
+
   // Received by material, including delivered purchase requests
   const receivedByMaterial = useMemo(
     () => getWarehouseInboundByMaterial(data.receipts, data.purchaseRequests),
@@ -206,6 +220,9 @@ export default function WarehouseIssues() {
 
   const getIssuedForObject = (materialId: string, objectId: string): number =>
     issuedByMaterialAndObject.get(`${materialId}:${objectId}`) || 0;
+
+  const getPrevIssuedForObject = (materialId: string, objectId: string): number =>
+    issuedByMaterialAndObjectExcludingEdit.get(`${materialId}:${objectId}`) || 0;
 
   interface ObjectOption { id: string; label: string; remaining: number; closed: boolean; }
 
@@ -638,8 +655,10 @@ export default function WarehouseIssues() {
                   const unit = materialMap.get(item.material_id)?.unit || '';
                   const requirement = item.material_id && item.object_id ? getRequirement(item.material_id, item.object_id) : 0;
                   const totalAssigned = item.material_id && item.object_id ? getObjectTotalAssigned(item.material_id, item.object_id) : 0;
-                  const covered = requirement > 0 ? Math.min(1, totalAssigned / requirement) : 0;
-                  const isOverfilled = totalAssigned > requirement && requirement > 0;
+                  const prevIssued = item.material_id && item.object_id ? getPrevIssuedForObject(item.material_id, item.object_id) : 0;
+                  const totalIssued = prevIssued + totalAssigned;
+                  const covered = requirement > 0 ? Math.min(1, totalIssued / requirement) : 0;
+                  const isOverfilled = totalIssued > requirement && requirement > 0;
                   const availableDrums = item.material_id ? getAvailableDrums(item.material_id, idx) : [];
                   const isFirstForGroup = idx === 0 || items[idx - 1].material_id !== item.material_id || items[idx - 1].object_id !== item.object_id;
                   const isLastForGroup = idx === items.length - 1 || items[idx + 1].material_id !== item.material_id || items[idx + 1].object_id !== item.object_id;
@@ -686,18 +705,37 @@ export default function WarehouseIssues() {
                       {item.material_id && item.object_id && requirement > 0 && isFirstForGroup && (
                         <div className="mb-2">
                           <div className="flex items-center justify-between text-[11px] mb-0.5">
-                            <span className="text-slate-500">Потребность: <span className="font-semibold text-blue-700">{formatQuantity(requirement)} {unit}</span></span>
-                            <span className={totalAssigned >= requirement ? 'text-emerald-600 font-semibold' : isOverfilled ? 'text-amber-600 font-semibold' : 'text-slate-600'}>
-                              Подобрано: {formatQuantity(totalAssigned)} / {formatQuantity(requirement)} {unit}
-                              {totalAssigned >= requirement && ' ✓'}
+                            <span className="text-slate-500">
+                              Потребность: <span className="font-semibold text-blue-700">{formatQuantity(requirement)} {unit}</span>
+                              {prevIssued > 0 && (
+                                <span className="ml-2 text-slate-400">· Ранее: <span className="font-medium text-slate-600">{formatQuantity(prevIssued)}</span></span>
+                              )}
+                            </span>
+                            <span className={isOverfilled ? 'text-red-600 font-semibold' : totalIssued >= requirement ? 'text-emerald-600 font-semibold' : 'text-slate-600'}>
+                              Итого: {formatQuantity(totalIssued)} / {formatQuantity(requirement)} {unit}
+                              {totalIssued >= requirement && !isOverfilled && ' ✓'}
                             </span>
                           </div>
                           <div className="h-1.5 rounded-full bg-slate-200 overflow-hidden">
                             <div
-                              className={`h-full rounded-full transition-all ${isOverfilled ? 'bg-amber-400' : covered >= 1 ? 'bg-emerald-500' : 'bg-blue-500'}`}
+                              className={`h-full rounded-full transition-all ${isOverfilled ? 'bg-red-400' : covered >= 1 ? 'bg-emerald-500' : 'bg-blue-500'}`}
                               style={{ width: `${Math.min(100, covered * 100)}%` }}
                             />
                           </div>
+                          {(() => {
+                            const remaining = requirement - totalIssued;
+                            if (remaining > 0) return (
+                              <p className="text-[10px] text-blue-600 mt-0.5">
+                                Остаток: <span className="font-semibold">{formatQuantity(remaining)} {unit}</span>
+                              </p>
+                            );
+                            if (remaining < 0) return (
+                              <p className="text-[10px] text-red-600 font-semibold mt-0.5">
+                                Превышение: +{formatQuantity(Math.abs(remaining))} {unit} — ожидается возврат на склад
+                              </p>
+                            );
+                            return null;
+                          })()}
                         </div>
                       )}
                       {/* Drum row */}
