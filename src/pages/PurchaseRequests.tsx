@@ -52,6 +52,7 @@ export default function PurchaseRequests({ initialMaterialId, onInitialMaterialH
   // Order modal state
   const [orderMaterialId, setOrderMaterialId] = useState<string | null>(null);
   const [orderRows, setOrderRows] = useState<{ object_id: string; required: number; orderQty: string }[]>([]);
+  const [orderSearch, setOrderSearch] = useState('');
 
   const materialMap = useMemo(() => new Map(data.materials.map((m) => [m.id, m])), [data.materials]);
   const objectMap = useMemo(() => new Map(data.objects.map((o) => [o.id, o])), [data.objects]);
@@ -243,6 +244,14 @@ export default function PurchaseRequests({ initialMaterialId, onInitialMaterialH
     setOrderModalOpen(true);
   };
 
+  const filteredDeficitMaterials = useMemo(() => {
+    const query = orderSearch.trim().toLowerCase();
+    if (!query) return deficitMaterials;
+    return deficitMaterials.filter((d) =>
+      d.material.name.toLowerCase().includes(query) || (d.material.article || '').toLowerCase().includes(query),
+    );
+  }, [deficitMaterials, orderSearch]);
+
   const handleOrderSubmit = async () => {
     if (!orderMaterialId) return;
     const validRows = orderRows.filter((r) => r.orderQty && parseFloat(r.orderQty) > 0);
@@ -292,7 +301,7 @@ export default function PurchaseRequests({ initialMaterialId, onInitialMaterialH
       <div className="flex items-center justify-between flex-wrap gap-2">
         <p className="text-sm text-slate-500">Всего заявок: {data.purchaseRequests.length}</p>
         <div className="flex gap-2">
-          <Button variant="secondary" onClick={() => setOrderModalOpen(true)}>
+          <Button variant="secondary" onClick={() => { setOrderSearch(''); setOrderModalOpen(true); }}>
             <ShoppingCart className="w-4 h-4" /> Заказать по таблице
           </Button>
           <Button onClick={() => openCreate()}>
@@ -580,39 +589,55 @@ export default function PurchaseRequests({ initialMaterialId, onInitialMaterialH
       <Modal open={orderModalOpen} onClose={() => setOrderModalOpen(false)} title="Заказать материалы" wide>
         <div className="space-y-4">
           <p className="text-sm text-slate-500">
-            Ниже — материалы с дефицитом. Нажмите «Заказать» у нужного материала, введите количество по каждому объекту (можно заказать часть потребности).
+            Ниже — материалы с дефицитом. Найдите нужную позицию по названию или артикулу, затем нажмите «Заказать».
           </p>
           {deficitMaterials.length === 0 ? (
             <p className="text-sm text-slate-400 text-center py-4">Дефицитов нет — всё заказано</p>
           ) : (
-            <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
-              <table className="w-full text-sm">
-                <thead className="sticky top-0">
-                  <tr className="bg-slate-50 text-slate-600 text-xs uppercase tracking-wider">
-                    <th className="text-left px-3 py-2 font-medium">Материал</th>
-                    <th className="text-right px-3 py-2 font-medium">Потребность</th>
-                    <th className="text-right px-3 py-2 font-medium">Заказано</th>
-                    <th className="text-right px-3 py-2 font-medium">Дефицит</th>
-                    <th className="text-center px-3 py-2 font-medium">Действие</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {deficitMaterials.map((d) => (
-                    <tr key={d.material.id} className="hover:bg-slate-50">
-                      <td className="px-3 py-2 text-slate-800 font-medium">{d.material.name}</td>
-                      <td className="px-3 py-2 text-right text-slate-700">{d.required}</td>
-                      <td className="px-3 py-2 text-right text-slate-700">{d.ordered}</td>
-                      <td className="px-3 py-2 text-right text-red-600 font-semibold">{d.deficit}</td>
-                      <td className="px-3 py-2 text-center">
-                        <Button size="sm" onClick={() => openOrderModal(d.material.id)}>
-                          <ShoppingCart className="w-3.5 h-3.5" /> Заказать
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  value={orderSearch}
+                  onChange={(e) => setOrderSearch(e.target.value)}
+                  placeholder="Найти срочную позицию по названию или артикулу..."
+                  className="w-full pl-10 pr-3 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  autoFocus
+                />
+              </div>
+              {filteredDeficitMaterials.length === 0 ? (
+                <p className="text-sm text-slate-400 text-center py-4">Поиск не дал результатов</p>
+              ) : (
+                <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
+                  <table className="w-full text-sm">
+                    <thead className="sticky top-0">
+                      <tr className="bg-slate-50 text-slate-600 text-xs uppercase tracking-wider">
+                        <th className="text-left px-3 py-2 font-medium">Материал</th>
+                        <th className="text-right px-3 py-2 font-medium">Потребность</th>
+                        <th className="text-right px-3 py-2 font-medium">Заказано</th>
+                        <th className="text-right px-3 py-2 font-medium">Дефицит</th>
+                        <th className="text-center px-3 py-2 font-medium">Действие</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredDeficitMaterials.map((d) => (
+                        <tr key={d.material.id} className="hover:bg-slate-50">
+                          <td className="px-3 py-2 text-slate-800 font-medium">{d.material.name}</td>
+                          <td className="px-3 py-2 text-right text-slate-700">{d.required}</td>
+                          <td className="px-3 py-2 text-right text-slate-700">{d.ordered}</td>
+                          <td className="px-3 py-2 text-right text-red-600 font-semibold">{d.deficit}</td>
+                          <td className="px-3 py-2 text-center">
+                            <Button size="sm" onClick={() => openOrderModal(d.material.id)}>
+                              <ShoppingCart className="w-3.5 h-3.5" /> Заказать
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
           )}
         </div>
       </Modal>
