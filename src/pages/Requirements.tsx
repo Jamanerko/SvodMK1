@@ -1,10 +1,26 @@
-import { useState, useMemo } from 'react';
-import { Plus, ClipboardList, Trash2, Edit3, Search, Download, History, AlertTriangle } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Plus, ClipboardList, Trash2, Edit3, Search, Download, History, AlertTriangle, ChevronRight, ChevronDown, CornerDownRight } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useData } from '@/lib/useData';
+import { getOwningObjectId, getObjectLabel, buildChildrenMap } from '@/lib/objectTree';
 import { Card, CardHeader, Button, Input, Select, SearchSelect, Modal, Badge, PageContainer, LoadingSpinner, EmptyState } from '@/components/ui';
-import { exportToExcel, exportToPDF } from '@/lib/export';
-import { OBJECT_TYPE_LABELS } from '@/lib/types';
+import { exportToExcel } from '@/lib/export';
+import { OBJECT_TYPE_LABELS, type DbObject, type Material, type Requirement } from '@/lib/types';
+
+interface RequirementLine {
+  requirement: Requirement;
+  object: DbObject | undefined;
+}
+
+interface RequirementGroup {
+  key: string;
+  ownerId: string;
+  owner: DbObject | undefined;
+  materialId: string;
+  material: Material | undefined;
+  total: number;
+  lines: RequirementLine[];
+}
 
 export default function Requirements() {
   const { data, loading, refresh } = useData();
@@ -17,37 +33,70 @@ export default function Requirements() {
   const [search, setSearch] = useState('');
   const [filterObject, setFilterObject] = useState('');
   const [filterMaterial, setFilterMaterial] = useState('');
+  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
 
   const materialMap = useMemo(() => new Map(data.materials.map((m) => [m.id, m])), [data.materials]);
   const objectMap = useMemo(() => new Map(data.objects.map((o) => [o.id, o])), [data.objects]);
   const objectOrder = useMemo(() => new Map(data.objects.map((o, index) => [o.id, index])), [data.objects]);
 
-  const enriched = useMemo(() => {
-    return data.requirements.map((r) => ({
-      ...r,
-      material: materialMap.get(r.material_id),
-      object: objectMap.get(r.object_id),
-    }));
-  }, [data.requirements, materialMap, objectMap]);
+  const groups = useMemo(() => {
+    const map = new Map<string, RequirementGroup>();
+    for (const r of data.requirements) {
+      const object = objectMap.get(r.object_id);
+      const ownerId = object ? getOwningObjectId(object) : r.object_id;
+      const key = `${ownerId}|${r.material_id}`;
+      let group = map.get(key);
+      if (!group) {
+        group = {
+          key,
+          ownerId,
+          owner: objectMap.get(ownerId),
+          materialId: r.material_id,
+          material: materialMap.get(r.material_id),
+          total: 0,
+          lines: [],
+        };
+        map.set(key, group);
+      }
+      group.total += r.quantity;
+      group.lines.push({ requirement: r, object });
+    }
+    for (const group of map.values()) {
+      group.lines.sort((a, b) => (objectOrder.get(a.requirement.object_id) ?? 0) - (objectOrder.get(b.requirement.object_id) ?? 0));
+    }
+    return [...map.values()].sort(
+      (a, b) =>
+        (objectOrder.get(a.ownerId) ?? Number.MAX_SAFE_INTEGER) - (objectOrder.get(b.ownerId) ?? Number.MAX_SAFE_INTEGER) ||
+        (a.material?.name || '').localeCompare(b.material?.name || '', 'ru'),
+    );
+  }, [data.requirements, objectMap, materialMap, objectOrder]);
 
   const filtered = useMemo(() => {
-    const rows = enriched.filter((r) => {
-      if (filterObject && r.object_id !== filterObject) return false;
-      if (filterMaterial && r.material_id !== filterMaterial) return false;
-      if (search) {
-        const s = search.toLowerCase();
-        const searchText = [
-          r.material?.name || '',
-          r.material?.article || '',
-          r.object?.name || '',
+    const s = search.toLowerCase();
+    return groups.filter((g) => {
+      if (filterObject && g.ownerId !== filterObject && !g.lines.some((l) => l.requirement.object_id === filterObject)) return false;
+      if (filterMaterial && g.materialId !== filterMaterial) return false;
+      if (s) {
+        const text = [
+          g.material?.name || '',
+          g.material?.article || '',
+          g.owner?.name || '',
+          ...g.lines.map((l) => l.object?.name || ''),
         ].join(' ').toLowerCase();
-        return searchText.includes(s);
+        return text.includes(s);
       }
       return true;
     });
+  }, [groups, search, filterObject, filterMaterial]);
 
-    return rows.sort((a, b) => (objectOrder.get(a.object_id) ?? Number.MAX_SAFE_INTEGER) - (objectOrder.get(b.object_id) ?? Number.MAX_SAFE_INTEGER));
-  }, [enriched, search, filterObject, filterMaterial, objectOrder]);
+  const toggleExpanded = (key: string) => {
+    setExpandedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
 
   const openCreate = () => {
     setForm({ material_id: '', object_id: '', quantity: '' });
@@ -101,7 +150,7 @@ export default function Requirements() {
     await refresh();
   };
 
-  const openEdit = (req: any) => {
+  const openEdit = (req: Requirement) => {
     setEditForm({ id: req.id, quantity: String(req.quantity), reason: '' });
     setEditModalOpen(true);
   };
@@ -155,18 +204,28 @@ export default function Requirements() {
   };
 
   const handleExport = () => {
-    const rows = filtered.map((r) => ({
-      'Материал': r.material?.name || '',
-      'Артикул': r.material?.article || '',
-      'Ед. изм.': r.material?.unit || '',
-      'Объект': r.object?.name || '',
-      'Тип объекта': r.object ? OBJECT_TYPE_LABELS[r.object.type] : '',
-      'Количество': r.quantity,
-    }));
+    const rows = filtered.flatMap((g) =>
+      g.lines.map((l) => ({
+        'Материал': g.material?.name || '',
+        'Артикул': g.material?.article || '',
+        'Ед. изм.': g.material?.unit || '',
+        'Основной объект': g.owner?.name || '',
+        'Объект': l.object?.name || '',
+        'Тип объекта': l.object ? OBJECT_TYPE_LABELS[l.object.type] : '',
+        'Количество': l.requirement.quantity,
+      })),
+    );
     exportToExcel(rows, 'Потребность', 'potrebnost');
   };
 
   if (loading) return <LoadingSpinner />;
+
+  const childrenMap = buildChildrenMap(data.objects);
+  const objectOptions = data.objects.map((o) => ({ value: o.id, label: getObjectLabel(o, objectMap) }));
+  const filterObjectOptions = data.objects
+    .filter((o) => o.parent_id === null)
+    .flatMap((o) => [o, ...(childrenMap.get(o.id) || [])])
+    .map((o) => ({ value: o.id, label: getObjectLabel(o, objectMap) }));
 
   return (
     <PageContainer>
@@ -180,7 +239,7 @@ export default function Requirements() {
       <Card>
         <CardHeader
           title="Потребность в материалах"
-          subtitle="Сколько материала заложено по проекту на каждый объект"
+          subtitle="Итог по основному объекту включает материалы его подобъектов. Разверните строку, чтобы увидеть детализацию"
           action={
             <button onClick={handleExport} className="px-3 py-1.5 text-xs rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 font-medium flex items-center gap-1.5">
               <Download className="w-3.5 h-3.5" /> Excel
@@ -200,7 +259,7 @@ export default function Requirements() {
           <Select
             value={filterObject}
             onChange={setFilterObject}
-            options={data.objects.map((o) => ({ value: o.id, label: o.name }))}
+            options={filterObjectOptions}
             placeholder="Все объекты"
             className="sm:w-48"
           />
@@ -217,37 +276,31 @@ export default function Requirements() {
         ) : (
           <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
             <table className="w-full text-sm">
-              <thead className="sticky top-0">
+              <thead className="sticky top-0 z-10">
                 <tr className="bg-slate-50 text-slate-600 text-xs uppercase tracking-wider">
                   <th className="text-left px-4 py-2.5 font-medium">Материал</th>
                   <th className="text-left px-4 py-2.5 font-medium">Артикул</th>
                   <th className="text-left px-4 py-2.5 font-medium">Объект</th>
-                  <th className="text-right px-4 py-2.5 font-medium">Кол-во</th>
-                  <th className="text-right px-4 py-2.5 font-medium">Действия</th>
+                  <th className="text-right px-4 py-2.5 font-medium">Итого</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filtered.map((r) => (
-                  <tr key={r.id} className="hover:bg-slate-50">
-                    <td className="px-4 py-2.5 text-slate-800 font-medium">{r.material?.name || '—'}</td>
-                    <td className="px-4 py-2.5 text-slate-500 text-xs">{r.material?.article || '—'}</td>
-                    <td className="px-4 py-2.5 text-slate-600">{r.object?.name || '—'}</td>
-                    <td className="px-4 py-2.5 text-right text-slate-800 font-semibold">{r.quantity.toLocaleString('ru-RU')}</td>
-                    <td className="px-4 py-2.5 text-right">
-                      <div className="flex justify-end gap-1">
-                        <button onClick={() => openHistory(r.id)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500" title="История корректировок">
-                          <History className="w-4 h-4" />
-                        </button>
-                        <button onClick={() => openEdit(r)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500">
-                          <Edit3 className="w-4 h-4" />
-                        </button>
-                        <button onClick={() => handleDelete(r.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-500">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {filtered.map((g) => {
+                  const expanded = expandedKeys.has(g.key);
+                  const hasSubObjects = g.lines.some((l) => l.requirement.object_id !== g.ownerId);
+                  return (
+                    <GroupRows
+                      key={g.key}
+                      group={g}
+                      expanded={expanded}
+                      hasSubObjects={hasSubObjects}
+                      onToggle={() => toggleExpanded(g.key)}
+                      onHistory={openHistory}
+                      onEdit={openEdit}
+                      onDelete={handleDelete}
+                    />
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -271,7 +324,7 @@ export default function Requirements() {
             <Select
               value={form.object_id}
               onChange={(v) => setForm({ ...form, object_id: v })}
-              options={data.objects.map((o) => ({ value: o.id, label: o.name }))}
+              options={objectOptions}
               placeholder="Выбрать..."
             />
           </div>
@@ -327,7 +380,7 @@ export default function Requirements() {
                     <span className="text-slate-800 font-semibold">{c.new_quantity}</span>
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm text-slate-700">{mat?.name} · {obj?.name}</div>
+                    <div className="text-sm text-slate-700">{mat?.name} · {obj ? getObjectLabel(obj, objectMap) : ''}</div>
                     <div className="text-xs text-slate-400">
                       {c.reason || 'Без указания причины'} · {c.changed_by} ·{' '}
                       {new Date(c.changed_at).toLocaleString('ru-RU')}
@@ -340,5 +393,80 @@ export default function Requirements() {
         )}
       </Modal>
     </PageContainer>
+  );
+}
+
+interface GroupRowsProps {
+  group: RequirementGroup;
+  expanded: boolean;
+  hasSubObjects: boolean;
+  onToggle: () => void;
+  onHistory: (id: string) => void;
+  onEdit: (req: Requirement) => void;
+  onDelete: (id: string) => void;
+}
+
+function GroupRows({ group, expanded, hasSubObjects, onToggle, onHistory, onEdit, onDelete }: GroupRowsProps) {
+  const Chevron = expanded ? ChevronDown : ChevronRight;
+  return (
+    <>
+      <tr className="hover:bg-slate-50">
+        <td className="px-4 py-2.5 text-slate-800 font-medium">
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={expanded}
+            className="inline-flex items-center gap-1.5 text-left hover:text-blue-700"
+          >
+            <Chevron className="w-4 h-4 text-slate-400 shrink-0" />
+            {group.material?.name || '—'}
+          </button>
+        </td>
+        <td className="px-4 py-2.5 text-slate-500 text-xs">{group.material?.article || '—'}</td>
+        <td className="px-4 py-2.5 text-slate-600">
+          <div className="flex items-center gap-2">
+            <span>{group.owner?.name || '—'}</span>
+            {group.owner && <Badge>{OBJECT_TYPE_LABELS[group.owner.type]}</Badge>}
+            {hasSubObjects && <span className="text-xs text-slate-400">с подобъектами</span>}
+          </div>
+        </td>
+        <td className="px-4 py-2.5 text-right text-slate-800 font-semibold">{group.total.toLocaleString('ru-RU')}</td>
+      </tr>
+      {expanded &&
+        group.lines.map((line) => {
+          const isOwn = line.requirement.object_id === group.ownerId;
+          return (
+            <tr key={line.requirement.id} className="bg-slate-50/70 text-sm">
+              <td className="px-4 py-2 text-slate-400 text-xs">
+                <span className="inline-flex items-center gap-1 pl-6">
+                  <CornerDownRight className="w-3.5 h-3.5" />
+                  Детализация
+                </span>
+              </td>
+              <td className="px-4 py-2" />
+              <td className="px-4 py-2 text-slate-600">
+                <div className="flex items-center gap-2">
+                  <span>{isOwn ? `На сам объект «${group.owner?.name || ''}»` : line.object?.name || '—'}</span>
+                  {line.object && !isOwn && <Badge>{OBJECT_TYPE_LABELS[line.object.type]}</Badge>}
+                </div>
+              </td>
+              <td className="px-4 py-2 text-right">
+                <div className="flex justify-end items-center gap-1">
+                  <span className="text-slate-700 font-medium mr-2">{line.requirement.quantity.toLocaleString('ru-RU')}</span>
+                  <button onClick={() => onHistory(line.requirement.id)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500" title="История корректировок">
+                    <History className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => onEdit(line.requirement)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500" title="Изменить">
+                    <Edit3 className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => onDelete(line.requirement.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-500" title="Удалить">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </td>
+            </tr>
+          );
+        })}
+    </>
   );
 }

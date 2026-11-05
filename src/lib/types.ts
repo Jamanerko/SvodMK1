@@ -1,4 +1,6 @@
-export type ObjectType = 'station' | 'crossover' | 'stretch';
+export type MainObjectType = 'station' | 'crossover' | 'stretch';
+export type SubObjectType = 'maps' | 'ms' | 'ktsm' | 'crossing' | 'other';
+export type ObjectType = MainObjectType | SubObjectType;
 
 export interface DbObject {
   id: string;
@@ -8,6 +10,7 @@ export interface DbObject {
   sequence_order: number;
   from_object_id: string | null;
   to_object_id: string | null;
+  parent_id: string | null;
   created_at: string;
 }
 
@@ -168,10 +171,22 @@ export interface WarehouseIssueReceipt {
   received_at: string;
 }
 
+export const MAIN_OBJECT_TYPES: MainObjectType[] = ['station', 'crossover', 'stretch'];
+export const SUB_OBJECT_TYPES: SubObjectType[] = ['maps', 'ms', 'ktsm', 'crossing', 'other'];
+
+export function isSubObjectType(type: ObjectType): type is SubObjectType {
+  return (SUB_OBJECT_TYPES as string[]).includes(type);
+}
+
 export const OBJECT_TYPE_LABELS: Record<ObjectType, string> = {
   station: 'Станция',
   crossover: 'Разъезд',
   stretch: 'Перегон',
+  maps: 'МАПС',
+  ms: 'МС',
+  ktsm: 'КТСМ',
+  crossing: 'Переезд',
+  other: 'Прочее',
 };
 
 export const PR_STATUS_LABELS: Record<PurchaseRequestStatus, string> = {

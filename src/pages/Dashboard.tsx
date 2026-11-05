@@ -2,9 +2,14 @@ import { useMemo, useState } from 'react';
 import { AlertTriangle, Package, TrendingDown, Warehouse, ArrowDownRight, ShoppingCart, ChevronRight, Users, MapPin, X } from 'lucide-react';
 import { useData } from '@/lib/useData';
 import { Card, CardHeader, LoadingSpinner, Badge, PageContainer, Modal } from '@/components/ui';
-import { OBJECT_TYPE_LABELS, PR_STATUS_LABELS, PR_STATUS_COLORS, ISSUE_STATUS_LABELS, ISSUE_STATUS_COLORS } from '@/lib/types';
+import { OBJECT_TYPE_LABELS, PR_STATUS_LABELS, PR_STATUS_COLORS, MAIN_OBJECT_TYPES, SUB_OBJECT_TYPES, type ObjectType } from '@/lib/types';
 import { exportToExcel, exportToPDF } from '@/lib/export';
 import { getWarehouseInboundByMaterial } from '@/lib/warehouse';
+import { getObjectLabel } from '@/lib/objectTree';
+
+const zeroTypeTotals = (): Record<ObjectType, number> => ({
+  station: 0, crossover: 0, stretch: 0, maps: 0, ms: 0, ktsm: 0, crossing: 0, other: 0,
+});
 
 export default function Dashboard({ onOpenPurchaseRequest }: { onOpenPurchaseRequest?: (materialId: string) => void }) {
   const { data, loading } = useData();
@@ -18,8 +23,16 @@ export default function Dashboard({ onOpenPurchaseRequest }: { onOpenPurchaseReq
     const categoryMap = new Map(data.categories.map((c) => [c.id, c]));
 
     const requiredByMaterial = new Map<string, number>();
+    const requiredByObjectType = zeroTypeTotals();
+    let mainRequired = 0;
+    let subRequired = 0;
     for (const req of data.requirements) {
       requiredByMaterial.set(req.material_id, (requiredByMaterial.get(req.material_id) || 0) + req.quantity);
+      const obj = objectMap.get(req.object_id);
+      if (!obj) continue;
+      requiredByObjectType[obj.type] += req.quantity;
+      if (obj.parent_id) subRequired += req.quantity;
+      else mainRequired += req.quantity;
     }
 
     const orderedByMaterial = new Map<string, number>();
@@ -79,6 +92,7 @@ export default function Dashboard({ onOpenPurchaseRequest }: { onOpenPurchaseReq
       totalMaterials: data.materials.length,
       totalObjects: data.objects.length,
       totalRequired: [...requiredByMaterial.values()].reduce((a, b) => a + b, 0),
+      mainRequired, subRequired, requiredByObjectType,
       totalOrdered: [...orderedByMaterial.values()].reduce((a, b) => a + b, 0),
       totalReceived: [...receivedByMaterial.values()].reduce((a, b) => a + b, 0),
       totalIssued: [...issuedByMaterial.values()].reduce((a, b) => a + b, 0),
@@ -127,7 +141,7 @@ export default function Dashboard({ onOpenPurchaseRequest }: { onOpenPurchaseReq
           <thead><tr className="bg-slate-50 text-slate-600 text-xs uppercase"><th className="text-left px-3 py-2">№</th><th className="text-left px-3 py-2">Тип</th><th className="text-left px-3 py-2">Название</th><th className="text-left px-3 py-2">Код</th></tr></thead>
           <tbody className="divide-y divide-slate-100">
             {[...data.objects].sort((a, b) => a.sequence_order - b.sequence_order).map((o, i) => (
-              <tr key={o.id}><td className="px-3 py-2 text-slate-400 text-xs">{i + 1}</td><td className="px-3 py-2"><Badge>{OBJECT_TYPE_LABELS[o.type]}</Badge></td><td className="px-3 py-2 text-slate-800 font-medium">{o.name}</td><td className="px-3 py-2 text-slate-500 text-xs">{o.code || '—'}</td></tr>
+              <tr key={o.id}><td className="px-3 py-2 text-slate-400 text-xs">{i + 1}</td><td className="px-3 py-2"><Badge>{OBJECT_TYPE_LABELS[o.type]}</Badge></td><td className="px-3 py-2 text-slate-800 font-medium">{getObjectLabel(o, stats.objectMap)}</td><td className="px-3 py-2 text-slate-500 text-xs">{o.code || '—'}</td></tr>
             ))}
           </tbody>
         </table>
@@ -227,9 +241,39 @@ export default function Dashboard({ onOpenPurchaseRequest }: { onOpenPurchaseReq
         })}
       </div>
 
+      <Card>
+        <CardHeader title="Потребность по объектам" subtitle="Подобъекты учитываются отдельно; материалы подобъектов уже входят в потребность своего перегона или станции" />
+        <div className="p-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-4">
+            <div className="text-xs text-slate-500">Основные объекты</div>
+            <div className="text-2xl font-bold text-slate-800 mt-1">{stats.mainRequired.toLocaleString('ru-RU')}</div>
+            <div className="text-xs text-slate-500 mt-2">
+              {MAIN_OBJECT_TYPES.map((t) => `${OBJECT_TYPE_LABELS[t]} ${stats.requiredByObjectType[t].toLocaleString('ru-RU')}`).join(' · ')}
+            </div>
+          </div>
+          <div className="rounded-xl border border-amber-100 bg-amber-50/60 p-4">
+            <div className="text-xs text-slate-500">Подобъекты</div>
+            <div className="text-2xl font-bold text-slate-800 mt-1">{stats.subRequired.toLocaleString('ru-RU')}</div>
+            <div className="text-xs text-slate-500 mt-2">КТСМ, МАПС, МС и прочие</div>
+          </div>
+          <div className="rounded-xl bg-slate-800 p-4">
+            <div className="text-xs text-slate-300">Итого (консолидировано)</div>
+            <div className="text-2xl font-bold text-white mt-1">{(stats.mainRequired + stats.subRequired).toLocaleString('ru-RU')}</div>
+            <div className="text-xs text-slate-300 mt-2">Основные объекты + подобъекты</div>
+          </div>
+        </div>
+        <div className="px-4 pb-4 grid grid-cols-2 sm:grid-cols-5 gap-2">
+          {SUB_OBJECT_TYPES.map((t) => (
+            <div key={t} className="rounded-lg border border-slate-200 px-3 py-2">
+              <div className="text-xs text-slate-500">{OBJECT_TYPE_LABELS[t]}</div>
+              <div className="text-lg font-semibold text-slate-800">{stats.requiredByObjectType[t].toLocaleString('ru-RU')}</div>
+            </div>
+          ))}
+        </div>
+      </Card>
+
       <Card className="p-4">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 text-center">
-          <div><div className="text-xs text-slate-500 mb-1">Потребность (всего)</div><div className="text-xl font-bold text-slate-800">{stats.totalRequired.toLocaleString('ru-RU')}</div></div>
+        <div className="grid grid-cols-3 gap-4 text-center">
           <div><div className="text-xs text-slate-500 mb-1">Заказано</div><div className="text-xl font-bold text-blue-600">{stats.totalOrdered.toLocaleString('ru-RU')}</div></div>
           <div><div className="text-xs text-slate-500 mb-1">Получено на склад</div><div className="text-xl font-bold text-emerald-600">{stats.totalReceived.toLocaleString('ru-RU')}</div></div>
           <div><div className="text-xs text-slate-500 mb-1">Выдано подрядчикам</div><div className="text-xl font-bold text-amber-600">{stats.totalIssued.toLocaleString('ru-RU')}</div></div>
