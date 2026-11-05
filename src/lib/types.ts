@@ -11,6 +11,7 @@ export interface DbObject {
   from_object_id: string | null;
   to_object_id: string | null;
   parent_id: string | null;
+  progress_percent: number;
   created_at: string;
 }
 

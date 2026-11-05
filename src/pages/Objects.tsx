@@ -12,17 +12,8 @@ import {
   type DbObject,
   type ObjectType,
 } from '@/lib/types';
+import { TYPE_COLORS } from '@/components/route/typeVisuals';
 
-const TYPE_COLORS: Record<ObjectType, string> = {
-  station: 'bg-blue-100 text-blue-700',
-  crossover: 'bg-amber-100 text-amber-700',
-  stretch: 'bg-emerald-100 text-emerald-700',
-  maps: 'bg-sky-100 text-sky-700',
-  ms: 'bg-orange-100 text-orange-700',
-  ktsm: 'bg-rose-100 text-rose-700',
-  crossing: 'bg-lime-100 text-lime-700',
-  other: 'bg-slate-200 text-slate-700',
-};
 
 const EMPTY_FORM = {
   name: '',
