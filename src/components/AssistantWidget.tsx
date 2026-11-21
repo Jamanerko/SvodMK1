@@ -1,13 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
-import { Bot, Send, X, Sparkles } from 'lucide-react';
+import { Bot, Send, X, Sparkles, Check, Loader2 } from 'lucide-react';
 import { useData } from '@/lib/useData';
 import { useAuth } from '@/lib/AuthContext';
-import { getAssistantResponse, ASSISTANT_SUGGESTIONS, type AssistantMessage } from '@/lib/aiAssistant';
+import {
+  getAssistantResponse,
+  parseAssistantAction,
+  createPurchaseRequestAction,
+  updateObjectProgressAction,
+  ASSISTANT_SUGGESTIONS,
+  type AssistantAction,
+  type AssistantMessage,
+} from '@/lib/aiAssistant';
 
-const GREETING = 'Здравствуйте! Я ваш ИИ-помощник. Спрашивайте про готовность объектов, материалы, дефицит или заявки на закуп.';
+const GREETING = 'Здравствуйте! Я ваш ИИ-помощник. Могу отвечать на вопросы по проекту, создавать заявки на закуп и править готовность объектов.';
 
 export default function AssistantWidget() {
-  const { data, loading } = useData();
+  const { data, loading, refresh } = useData();
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
@@ -20,15 +28,56 @@ export default function AssistantWidget() {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, open]);
 
-  const send = (text: string) => {
+  const send = async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed || loading) return;
+    setInput('');
+
+    const action = parseAssistantAction(data, trimmed);
+    if (action) {
+      setMessages((prev) => [
+        ...prev,
+        { id: `u-${Date.now()}`, role: 'user', text: trimmed },
+        { id: `a-${Date.now() + 1}`, role: 'assistant', text: action.confirmText, pendingAction: action },
+      ]);
+      return;
+    }
+
+    const progressMatch = trimmed.match(/(?:готовность|прогресс)\s+(.+?)\s+(-?\d+)\s*%?\s*$/i);
+    if (progressMatch) {
+      setMessages((prev) => [
+        ...prev,
+        { id: `u-${Date.now()}`, role: 'user', text: trimmed },
+        { id: `a-${Date.now() + 1}`, role: 'assistant', text: 'Обновляю готовность…' },
+      ]);
+      const result = await updateObjectProgressAction(data, progressMatch[1], parseInt(progressMatch[2], 10));
+      setMessages((prev) => {
+        const copy = [...prev];
+        copy[copy.length - 1] = { id: copy[copy.length - 1].id, role: 'assistant', text: result };
+        return copy;
+      });
+      await refresh();
+      return;
+    }
+
     setMessages((prev) => [
       ...prev,
       { id: `u-${Date.now()}`, role: 'user', text: trimmed },
       { id: `a-${Date.now() + 1}`, role: 'assistant', text: getAssistantResponse(data, trimmed) },
     ]);
-    setInput('');
+  };
+
+  const confirmAction = async (messageId: string) => {
+    const msg = messages.find((m) => m.id === messageId);
+    if (!msg?.pendingAction) return;
+    setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, pendingAction: undefined, text: 'Выполняю…' } : m)));
+    const result = await createPurchaseRequestAction(msg.pendingAction);
+    setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, text: result } : m)));
+    await refresh();
+  };
+
+  const cancelAction = (messageId: string) => {
+    setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, pendingAction: undefined, text: 'Действие отменено.' } : m)));
   };
 
   return (
@@ -71,6 +120,23 @@ export default function AssistantWidget() {
                   }`}
                 >
                   {m.text}
+                  {m.pendingAction && (
+                    <div className="flex gap-2 mt-2">
+                      <button
+                        onClick={() => confirmAction(m.id)}
+                        className="inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-blue-600 text-white text-xs hover:bg-blue-500 transition-colors"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        Подтвердить
+                      </button>
+                      <button
+                        onClick={() => cancelAction(m.id)}
+                        className="px-3 py-1 rounded-lg border border-slate-200 text-slate-600 text-xs hover:bg-slate-50 transition-colors"
+                      >
+                        Отмена
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -97,7 +163,7 @@ export default function AssistantWidget() {
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Спросите о проекте…"
+              placeholder="Спросите или дайте команду…"
               className="flex-1 text-sm rounded-full border border-slate-200 px-4 py-2 focus:outline-none focus:border-blue-400 bg-slate-50"
             />
             <button

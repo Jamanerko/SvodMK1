@@ -1,4 +1,5 @@
 import type { CachedData } from '@/lib/useData';
+import { supabase } from '@/lib/supabase';
 import { computeCoverage, getOverallProgress, getReadinessTone, READINESS_TONE_LABELS } from '@/lib/readiness';
 import { getMainObjects, buildChildrenMap } from '@/lib/objectTree';
 import { OBJECT_TYPE_LABELS } from '@/lib/types';
@@ -7,6 +8,7 @@ export interface AssistantMessage {
   id: string;
   role: 'user' | 'assistant';
   text: string;
+  pendingAction?: AssistantAction;
 }
 
 const fmt = (n: number) => n.toLocaleString('ru-RU');
@@ -158,8 +160,18 @@ export function getAssistantResponse(data: CachedData, query: string): string {
     return `Здравствуйте! Я ИИ-помощник. ${buildProjectSummary(data)}\nСпросите про готовность, материалы, дефицит или заявки.`;
   }
   if (/(помощь|что ты умеешь|help|команды)/.test(q)) {
-    return 'Я умею отвечать по данным вашего проекта:\n• «Общая сводка» — готовность и обеспеченность\n• «Готовность объектов» — прогресс по каждому объекту\n• «Чего не хватает» — дефицит материалов\n• Название объекта — детали по нему\n• Название материала — потребность и поставки\n• «Статус заявок» — закупки по статусам';
+    return 'Я умею отвечать по данным вашего проекта и выполнять действия:\n• «Общая сводка» — готовность и обеспеченность\n• «Готовность объектов» — прогресс по каждому объекту\n• «Чего не хватает» — дефицит материалов\n• Название объекта — детали по нему\n• Название материала — потребность и поставки\n• «Статус заявок» — закупки по статусам\nДействия:\n• «Создай заявку: <материал>, <количество>» — создать заявку на закуп\n• «Готовность <объект> <число>%» — обновить готовность объекта';
   }
+
+  // Write commands are intercepted by the widget via parseAssistantAction / progress regex;
+  // if they still reach here (e.g. unmatched material), show a usage hint.
+  if (/(?:созда[йт]|оформи|добавь)\w*\s*(?:заявку|закуп)/.test(q)) {
+    return 'Не удалось распознать заявку. Формат: «Создай заявку: <материал>, <количество> [для <объект>]».';
+  }
+  if (/(?:готовность|прогресс)\s+.+\d+\s*%?$/.test(q)) {
+    return 'Не удалось распознать команду. Формат: «Готовность <объект> <число>%».';
+  }
+
   if (/(сводк|итог|общ|как дела|статус проекта)/.test(q)) return answerOverall(data);
   if (/(не хватает|дефицит|проблем|не обеспеч|недоста)/.test(q)) return answerShortage(data);
   if (/(готовност|прогресс|объекты|трасс)/.test(q)) return answerReady(data);
@@ -170,6 +182,91 @@ export function getAssistantResponse(data: CachedData, query: string): string {
     answerMaterialQuery(data, query) ??
     `Не нашёл точного ответа. ${buildProjectSummary(data)}\nУточните вопрос: например, назовите объект или материал, либо спросите «что ты умеешь».`
   );
+}
+
+export interface AssistantAction {
+  kind: 'create-purchase-request';
+  materialId: string;
+  materialName: string;
+  quantity: number;
+  objectId: string | null;
+  objectName: string;
+  confirmText: string;
+}
+
+export function parseAssistantAction(data: CachedData, query: string): AssistantAction | null {
+  const q = normalize(query);
+  const createMatch = q.match(/(?:созда[йт]|оформи|добавь)\w*\s*(?:заявку|закуп)\s*[:\s]?\s*(.+)/);
+  if (!createMatch) return null;
+  const rest = createMatch[1];
+  const amountMatch = rest.match(/(\d+(?:[.,]\d+)?)/);
+  if (!amountMatch) return null;
+  const quantity = parseFloat(amountMatch[1].replace(',', '.'));
+  const materialName = rest.slice(0, amountMatch.index).trim().replace(/[,:]+$/, '');
+  const material = data.materials.find((m) => normalize(m.name) === materialName)
+    || data.materials.find((m) => materialName.length > 0 && normalize(m.name).includes(materialName))
+    || data.materials.find((m) => q.includes(normalize(m.name)));
+  if (!material) return null;
+  const forMatch = rest.match(/для\s+(.+)$/i);
+  let objectId: string | null = null;
+  let objectName = '';
+  if (forMatch) {
+    const target = forMatch[1].replace(/[.,!?]+$/, '').trim();
+    const obj = data.objects.find((o) => normalize(o.name) === target)
+      || data.objects.find((o) => normalize(o.name).includes(target))
+      || data.objects.find((o) => o.code && normalize(o.code) === target);
+    if (obj) {
+      objectId = obj.id;
+      objectName = obj.name;
+    }
+  }
+  return {
+    kind: 'create-purchase-request',
+    materialId: material.id,
+    materialName: material.name,
+    quantity,
+    objectId,
+    objectName,
+    confirmText: `Создать заявку на закуп: ${material.name}, ${fmt(quantity)} ${material.unit}${objectName ? `, для «${objectName}»` : ''}?`,
+  };
+}
+
+export async function createPurchaseRequestAction(action: AssistantAction): Promise<string> {
+  const { data: inserted, error } = await supabase
+    .from('purchase_requests')
+    .insert({
+      material_id: action.materialId,
+      total_quantity: action.quantity,
+      request_type: 'rk',
+      status: 'draft',
+      request_date: new Date().toISOString().slice(0, 10),
+      notes: `Создано ИИ-помощником`,
+    })
+    .select()
+    .single();
+  if (error || !inserted) return 'Не удалось создать заявку. Попробуйте ещё раз.';
+  if (action.objectId) {
+    await supabase.from('purchase_request_items').insert({
+      purchase_request_id: inserted.id,
+      object_id: action.objectId,
+      quantity: action.quantity,
+    });
+  }
+  return `Заявка на закуп создана: ${action.materialName}, ${fmt(action.quantity)} ${action.objectName ? `для «${action.objectName}»` : ''}. Статус — черновик.`;
+}
+
+export async function updateObjectProgressAction(data: CachedData, objectName: string, percent: number): Promise<string> {
+  if (Number.isNaN(percent) || percent < 0 || percent > 100) {
+    return 'Процент готовности должен быть числом от 0 до 100.';
+  }
+  const q = normalize(objectName);
+  const obj = data.objects.find((o) => normalize(o.name) === q)
+    || data.objects.find((o) => normalize(o.name).includes(q))
+    || data.objects.find((o) => o.code && normalize(o.code) === q);
+  if (!obj) return `Не нашёл объект «${objectName}». Проверьте название.`;
+  const { error } = await supabase.from('objects').update({ progress_percent: percent }).eq('id', obj.id);
+  if (error) return 'Не удалось обновить готовность. Попробуйте ещё раз.';
+  return `Готовность объекта «${obj.name}» обновлена: ${percent}%.`;
 }
 
 export const ASSISTANT_SUGGESTIONS = ['Общая сводка', 'Готовность объектов', 'Чего не хватает по материалам?', 'Статус заявок'];
