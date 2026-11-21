@@ -19,7 +19,7 @@ import type {
   OtherSiteIssueItem,
 } from '@/lib/types';
 
-interface CachedData {
+export interface CachedData {
   objects: DbObject[];
   materials: Material[];
   categories: MaterialCategory[];

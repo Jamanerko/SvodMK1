@@ -13,6 +13,7 @@ import Corrections from '@/pages/Corrections';
 import ContractorPortal from '@/pages/ContractorPortal';
 import AccessControl from '@/pages/AccessControl';
 import LoginScreen from '@/pages/LoginScreen';
+import AssistantWidget from '@/components/AssistantWidget';
 import { useAuth } from '@/lib/AuthContext';
 
 export type PageKey =
@@ -203,6 +204,7 @@ function App() {
           </div>
         </header>
         <main className="flex-1 p-4 lg:p-6 overflow-x-hidden">{renderPage()}</main>
+        <AssistantWidget />
       </div>
     </div>
   );
